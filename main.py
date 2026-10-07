@@ -33,6 +33,7 @@ import numpy as np
 from avatar_app.calibration import Calibrator
 from avatar_app.debug_draw import draw_landmarks
 from avatar_app.hand_mesh import N_MEASURABLE
+from avatar_app.pipeline import DetectionWorker, StateBlender
 from avatar_app.renderer import AvatarRenderer
 from avatar_app.streaming import BACKGROUND_NAMES, VirtualCamera, background_color
 from avatar_app.tracker import BodyState, Tracker
@@ -65,6 +66,10 @@ def parse_args() -> argparse.Namespace:
                     help="resolução da saída de stream, ex.: 1280x720 (por defeito = a da webcam)")
     ap.add_argument("--background", choices=BACKGROUND_NAMES, default="gradiente",
                     help="fundo do avatar; verde/azul/magenta para chroma key")
+    ap.add_argument("--fps", type=int, default=30,
+                    help="ritmo a que o avatar é desenhado/enviado (a deteção corre ao seu ritmo)")
+    ap.add_argument("--sync", action="store_true",
+                    help="modo antigo: um desenho por deteção, sem interpolação")
     return ap.parse_args()
 
 
@@ -85,17 +90,20 @@ def open_camera(index: int, width: int, height: int) -> cv2.VideoCapture:
         cap = cv2.VideoCapture(index)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+    # A deteção é mais lenta do que a webcam: fila de 1 frame para não processar imagens antigas.
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     return cap
 
 
 def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool,
              calib_status: str | None = None, exaggeration: float | None = None,
-             stream_status: str | None = None) -> None:
+             stream_status: str | None = None, detect_fps: float | None = None) -> None:
     def status(label, ok):
         return f"{label}:{'OK' if ok else '--'}"
 
+    fps_text = f"FPS avatar {fps:4.1f}" + (f"  detecao {detect_fps:4.1f}" if detect_fps is not None else "")
     lines = [
-        f"FPS {fps:4.1f}   suavizacao {'ON' if smoothing else 'OFF'}   "
+        f"{fps_text}   suavizacao {'ON' if smoothing else 'OFF'}   "
         f"{'calibrado' if s.calibrated else 'sem calibracao [k]'}",
         "  ".join([status("rosto", s.face is not None), status("corpo", s.pose is not None),
                    status("maos", len(s.hands))]).replace("maos:OK", f"maos:{len(s.hands)}"),
@@ -153,7 +161,7 @@ def main() -> None:
     cam_size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or args.width,
                 int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or args.height)
     out_size = parse_size(args.output, cam_size)
-    vcam = VirtualCamera(*out_size)
+    vcam = VirtualCamera(*out_size, fps=args.fps)
     if args.virtual_cam:
         vcam.start()
 
@@ -161,17 +169,33 @@ def main() -> None:
     if args.stream_window:
         cv2.namedWindow(STREAM_WINDOW, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(STREAM_WINDOW, *out_size)
+    # A deteção corre numa thread própria; aqui desenha-se a ritmo fixo (ou, com --sync,
+    # um desenho por deteção, como antes).
+    worker = DetectionWorker(cap, tracker, mirror=not args.no_mirror)
+    worker.start()
+    blender = StateBlender()
+    frame_period = 1.0 / max(args.fps, 1)
+    last_seq, state, frame = -1, None, None
     try:
         while True:
-            ok, frame = cap.read()
-            if not ok:
+            t_frame = time.perf_counter()
+            latest = worker.latest()
+            if worker.failed and (latest is None or latest[0] == last_seq):
                 print("Frame da webcam falhou; a terminar.")
                 break
-            if not args.no_mirror:
-                frame = cv2.flip(frame, 1)
-
-            state = tracker.process(frame)
-            calibrator.process(state)  # recolhe a pose neutra ou aplica a calibração
+            if latest is None:  # ainda a arrancar
+                if cv2.waitKey(10) & 0xFF in (ord("q"), 27):
+                    break
+                continue
+            seq, frame, detected = latest
+            new_detection = seq != last_seq
+            if new_detection:
+                last_seq = seq
+                calibrator.process(detected)  # recolhe a pose neutra ou aplica a calibração (1x por deteção)
+            elif args.sync:
+                cv2.waitKey(1)
+                continue
+            state = detected if args.sync else blender.update(detected)
             avatar = renderer.render(state)
 
             # Saída limpa para o stream (sem HUD nem webcam), antes de desenhar o HUD.
@@ -187,9 +211,10 @@ def main() -> None:
             last = now
 
             if show_webcam:
+                cam_view = frame.copy()  # o frame é partilhado com a thread de deteção
                 if show_landmarks:
-                    draw_landmarks(frame, state)
-                view = np.hstack([frame, avatar])
+                    draw_landmarks(cam_view, detected)
+                view = np.hstack([cam_view, avatar])
             else:
                 view = avatar.copy()
             if vcam.active:
@@ -200,10 +225,12 @@ def main() -> None:
                 cam_text = "camara virtual OFF"
             stream_status = f"stream {out_size[0]}x{out_size[1]}: {cam_text} [v]   fundo {background_name} [b]"
             draw_hud(view, state, fps, tracker.smoothing, calibrator.status(),
-                     renderer.exaggeration if renderer.exaggerate else None, stream_status)
+                     renderer.exaggeration if renderer.exaggerate else None, stream_status, worker.fps)
             cv2.imshow(WINDOW, view)
 
-            key = cv2.waitKey(1) & 0xFF
+            # Ritmo fixo: espera o que falta para completar o período do frame.
+            wait_ms = 1 if args.sync else max(1, int((frame_period - (time.perf_counter() - t_frame)) * 1000))
+            key = cv2.waitKey(wait_ms) & 0xFF
             if key in (ord("q"), 27) or cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE) < 1:
                 break
             if key == ord("c"):
@@ -242,6 +269,7 @@ def main() -> None:
                 cv2.imwrite(str(path), view)
                 print(f"Guardado {path}")
     finally:
+        worker.stop()
         vcam.stop()
         cap.release()
         tracker.close()

@@ -30,7 +30,7 @@ Objetivo do projeto: avatar em tempo real para **streaming**.
 - [x] **Fundo para chroma key:** verde, azul ou magenta (`--background`, ou a tecla `b` ao vivo).
 - [x] **Janela só com o avatar** (`--stream-window`): sem HUD nem webcam, para "Captura de janela" no OBS.
 - [ ] **Fundo transparente:** a câmara virtual não suporta transparência. Seria preciso outra via, por exemplo uma fonte de browser no OBS.
-- [ ] **Fluidez:** cada frame do Holistic custa ~55 ms (≈ 15–18 FPS no máximo). Medido em 2026-10-07: reduzir a imagem de deteção ou desligar a íris **não** acelera nada. O que pode ajudar é correr a deteção numa thread separada e desenhar o avatar a 30 FPS, interpolando entre deteções.
+- [x] **Fluidez:** a deteção corre numa thread separada e o avatar é desenhado a ritmo fixo (`--fps`, 30 por defeito), deslizando para a última deteção. No teste, o avatar passou de 11 para 26 FPS, em passos ~2× mais pequenos. `--sync` volta ao modo antigo. (Reduzir a imagem de deteção ou desligar a íris não acelera o Holistic, que custa ~55 ms por frame.)
 
 ## Avatares
 

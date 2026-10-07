@@ -88,6 +88,8 @@ O avatar sai limpo para o stream, sem HUD nem webcam. Há duas formas de o usar:
 
 **Resolução da saída:** `--output 1920x1080`. Por defeito é a resolução da webcam.
 
+**Fluidez:** a deteção (MediaPipe, ~55–70 ms por frame) corre numa thread própria, e o avatar é desenhado e enviado a ritmo fixo (`--fps 30`, por defeito). Entre deteções, os pontos deslizam para a última posição detetada, o que custa ~50 ms de atraso em troca de movimento fluido. `--sync` volta ao modo antigo, com um desenho por deteção. O HUD mostra os dois ritmos (`FPS avatar` e `detecao`).
+
 ## Estrutura
 
 ```
@@ -99,6 +101,7 @@ avatar_app/
   head.py                crânio, nuca e orelhas estimados em 3D a partir da malha da cara
   hand_mesh.py           largura real dos dedos medida na imagem + malha/contorno da mão
   streaming.py           câmara virtual (pyvirtualcam) e fundos para chroma key
+  pipeline.py            thread de deteção + interpolação para desenhar a ritmo fixo
   renderer.py            desenha o avatar (cabeça, pescoço, tronco, braços, mãos e dedos)
   debug_draw.py          desenha os landmarks sobre a webcam
 ```
