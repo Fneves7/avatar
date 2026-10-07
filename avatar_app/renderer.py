@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 
 from .eyes import EyeLife
+from .idle import IdleAnimator
 from .transitions import Fade
 from .hand_mesh import HandMesh
 from .head import NECK_TOP, Ear, estimate_head
@@ -158,6 +159,8 @@ class AvatarRenderer:
         self._auto_blink = 0.0      # fecho do piscar automático neste frame (0..1)
         self._saccade = (0.0, 0.0)  # desvio da íris neste frame (x raio da íris)
         self.transitions = True     # mãos/cara entram e saem aos poucos (tecla t)
+        self.idle_enabled = True    # respiração quando parado (tecla i)
+        self.idle = IdleAnimator()
         self._hand_fades = {L_WRIST: Fade(), R_WRIST: Fade()}
         self._face_fade = Fade()
         self._hands_drawn: set[int] = set()
@@ -197,6 +200,11 @@ class AvatarRenderer:
         p = self.palette
         ow = max(2, s.width // 320)  # espessura do contorno
         now = time.monotonic() if t is None else t
+        # Idle: respiração subtil quando a pessoa está parada (só altera o que se desenha).
+        if self.idle_enabled:
+            s = self.idle.apply(s, now)
+        else:
+            self.idle.weight = 0.0
 
         # Transições: opacidade de cada mão e da cara (e o último valor visto, para desvanecer).
         for side, fade in self._hand_fades.items():

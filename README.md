@@ -62,6 +62,7 @@ Opções:
 | `+` / `-` | aumenta ou diminui a intensidade do exagero |
 | `l` | liga ou desliga o olhar vivo (piscar automático e micro-movimentos dos olhos) |
 | `t` | liga ou desliga as transições suaves (as mãos e a cara entram e saem aos poucos) |
+| `i` | liga ou desliga o idle (respiração subtil quando estás parado) |
 | `s` | liga ou desliga a suavização |
 | `v` | liga ou desliga a câmara virtual |
 | `b` | muda o fundo do avatar (gradiente, verde, azul ou magenta) |
@@ -106,6 +107,7 @@ avatar_app/
   pipeline.py            thread de deteção + interpolação para desenhar a ritmo fixo
   eyes.py                olhar vivo: piscar automático e micro-movimentos da íris
   transitions.py         transições suaves (fade-in/fade-out) das mãos e da cara
+  idle.py                idle: respiração subtil quando a pessoa está parada
   renderer.py            desenha o avatar (cabeça, pescoço, tronco, braços, mãos e dedos)
   debug_draw.py          desenha os landmarks sobre a webcam
 ```
