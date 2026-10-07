@@ -15,6 +15,8 @@ Teclas:
   m        ligar/desligar o movimento secundário (cabelo e mangas seguem com atraso)
   + / -    aumentar/diminuir a intensidade do exagero
   s        ligar/desligar suavização
+  S        perfil de suavização: leve (rápido) / normal / forte (estável)
+  a        ligar/desligar os limites anatómicos da pose (corrige cotovelos inventados, saltos, ...)
   v        ligar/desligar a câmara virtual (avatar como webcam no OBS/Teams/Zoom/Discord)
   b        mudar o fundo do avatar (gradiente / verde / azul / magenta para chroma key)
   p        guardar captura de ecrã em screenshots/
@@ -103,13 +105,14 @@ def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool,
              calib_status: str | None = None, exaggeration: float | None = None,
              stream_status: str | None = None, detect_fps: float | None = None,
              lively: bool = True, transitions: bool = True, idle: float | None = 0.0,
-             secondary: bool = True) -> None:
+             secondary: bool = True, smoothing_preset: str = "normal",
+             constraints: bool | None = None, fixes: list[str] | None = None) -> None:
     def status(label, ok):
         return f"{label}:{'OK' if ok else '--'}"
 
     fps_text = f"FPS avatar {fps:4.1f}" + (f"  detecao {detect_fps:4.1f}" if detect_fps is not None else "")
     lines = [
-        f"{fps_text}   suavizacao {'ON' if smoothing else 'OFF'}   "
+        f"{fps_text}   suavizacao {smoothing_preset if smoothing else 'OFF'} [s/S]   "
         f"{'calibrado' if s.calibrated else 'sem calibracao [k]'}",
         "  ".join([status("rosto", s.face is not None), status("corpo", s.pose is not None),
                    status("maos", len(s.hands))]).replace("maos:OK", f"maos:{len(s.hands)}"),
@@ -133,6 +136,11 @@ def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool,
     idle_text = "OFF" if idle is None else (f"a respirar {idle:.0%}" if idle > 0 else "ON")
     lines.append(f"olhar vivo {'ON' if lively else 'OFF'} [l]   transicoes {'ON' if transitions else 'OFF'} [t]"
                  f"   idle {idle_text} [i]   mov. secundario {'ON' if secondary else 'OFF'} [m]")
+    if constraints is not None:
+        text = f"anatomia {'ON' if constraints else 'OFF'} [a]"
+        if constraints and fixes:
+            text += ": " + "; ".join(dict.fromkeys(fixes))
+        lines.append(text)
     if stream_status:
         lines.append(stream_status)
     lines.append("[c] cores [d] landmarks [w] webcam [h] cabeca 3D [k] calibrar [s] suavizar [p] print [q] sair")
@@ -236,7 +244,8 @@ def main() -> None:
             draw_hud(view, state, fps, tracker.smoothing, calibrator.status(),
                      renderer.exaggeration if renderer.exaggerate else None, stream_status, worker.fps,
                      renderer.lively_eyes, renderer.transitions,
-                     renderer.idle.weight if renderer.idle_enabled else None, renderer.secondary_enabled)
+                     renderer.idle.weight if renderer.idle_enabled else None, renderer.secondary_enabled,
+                     tracker.smoothing_preset, tracker.constraints, detected.pose_fixes)
             cv2.imshow(WINDOW, view)
 
             # Ritmo fixo: espera o que falta para completar o período do frame.
@@ -272,6 +281,10 @@ def main() -> None:
                 renderer.exaggeration = max(0.25, renderer.exaggeration - 0.25)
             elif key == ord("s"):
                 tracker.smoothing = not tracker.smoothing
+            elif key == ord("S"):
+                tracker.next_smoothing_preset()
+            elif key == ord("a"):
+                tracker.constraints = not tracker.constraints
             elif key == ord("v"):
                 if vcam.active:
                     vcam.stop()

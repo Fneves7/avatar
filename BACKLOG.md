@@ -24,8 +24,12 @@ Objetivo do projeto: avatar em tempo real para **streaming**.
 
 ## Estabilidade
 
-- [ ] **Limites anatómicos da pose:** corrigir só o que é claramente impossível (cotovelo a dobrar para trás, ombro abaixo da anca, cotovelo inventado fora de imagem).
-- [ ] **Afinar a suavização por parte** com a webcam real: dedos com menos atraso, tronco com mais.
+- [x] **Limites anatómicos da pose** (tecla `a`): só corrige o que é claramente impossível, e o HUD diz o que foi corrigido.
+  - **Cotovelo vs. mão:** com um ângulo impossível entre o antebraço e a mão (>60° com o cotovelo pouco visível, ou >110° sempre), o cotovelo passa para o prolongamento da mão.
+  - **Saltos:** uma articulação pouco visível que salta mais de 0,5× a largura dos ombros fica retida até 3 deteções.
+  - **Braços esticados:** braço ou antebraço com mais de 1,5× a largura dos ombros é encurtado.
+  - **Ancas acima dos ombros:** são ignoradas.
+- [x] **Perfis de suavização** (`Shift+S`): leve (menos atraso, mais tremor), normal e forte (mais estável). Falta escolher o melhor com a webcam real.
 - [ ] **Braços e ombros (abordagem conservadora):** manter o desenho atual e usar as medições da silhueta só para afinar larguras, com limites apertados. Uma primeira versão (medir tudo na segmentação e redesenhar o tronco a partir disso) foi revertida em 2026-10-07 porque ficou mal com a webcam real.
 
 ## Streaming

@@ -65,6 +65,8 @@ Opções:
 | `i` | liga ou desliga o idle (respiração subtil quando estás parado) |
 | `m` | liga ou desliga o movimento secundário (o cabelo e as mangas seguem com atraso) |
 | `s` | liga ou desliga a suavização |
+| `Shift+S` | muda o perfil de suavização: leve (mais rápido), normal ou forte (mais estável) |
+| `a` | liga ou desliga os limites anatómicos da pose (corrige cotovelos inventados, saltos, etc.) |
 | `v` | liga ou desliga a câmara virtual |
 | `b` | muda o fundo do avatar (gradiente, verde, azul ou magenta) |
 | `p` | guarda uma captura em `screenshots/` |
@@ -110,6 +112,7 @@ avatar_app/
   transitions.py         transições suaves (fade-in/fade-out) das mãos e da cara
   idle.py                idle: respiração subtil quando a pessoa está parada
   secondary.py           movimento secundário: molas do cabelo e das mangas
+  constraints.py         limites anatómicos da pose (cotovelos, saltos, braços, ancas)
   renderer.py            desenha o avatar (cabeça, pescoço, tronco, braços, mãos e dedos)
   debug_draw.py          desenha os landmarks sobre a webcam
 ```

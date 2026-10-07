@@ -15,6 +15,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
+from .constraints import apply_constraints, reject_glitches
 from .hand_mesh import HandMesh, HandMeshEstimator
 from .smoothing import OneEuroFilter
 
@@ -26,6 +27,10 @@ L_WRIST, R_WRIST = 15, 16
 L_HIP, R_HIP = 23, 24
 
 HOLD_SECONDS = 0.25  # mantém a última pose de uma parte que deixou de ser detetada
+
+# Perfis de suavização: multiplicadores de (min_cutoff, beta) dos filtros One Euro.
+# Menos min_cutoff = mais suave/estável; mais beta = menos atraso em movimentos rápidos.
+SMOOTHING_PRESETS = {"leve": (2.0, 1.5), "normal": (1.0, 1.0), "forte": (0.5, 0.7)}
 
 HAS_HOLISTIC = hasattr(mp, "solutions") and hasattr(mp.solutions, "holistic")
 
@@ -44,6 +49,7 @@ class BodyState:
     hands: dict[int, np.ndarray] = field(default_factory=dict)  # chave = índice do pulso na pose (15/16)
     hand_meshes: dict[int, HandMesh] = field(default_factory=dict)  # contorno dos dedos por mão
     calibrated: bool = False  # head_angles/blendshapes já relativos à pose neutra
+    pose_fixes: list[str] = field(default_factory=list)  # correções anatómicas feitas neste frame
 
     def visible(self, idx: int, thr: float = 0.5) -> bool:
         return self.pose is not None and self.pose_visibility is not None and self.pose_visibility[idx] >= thr
@@ -260,7 +266,27 @@ class Tracker:
         self._pose = _Part(min_cutoff=1.2, beta=0.04)
         self._hands = {L_WRIST: _Part(1.5, 0.06), R_WRIST: _Part(1.5, 0.06)}
         self._angles_filter = OneEuroFilter(1.0, 0.02)
+        self._filter_base = {f: (f.min_cutoff, f.beta) for f in self._filters()}
+        self.smoothing_preset = "normal"
         self.hand_mesh = HandMeshEstimator() if hand_mesh else None
+        self.constraints = True   # limites anatómicos da pose (tecla a)
+        self._glitch_held: dict[int, int] = {}
+
+    def _filters(self) -> list[OneEuroFilter]:
+        return [self._face.filter, self._pose.filter, self._angles_filter] + \
+               [p.filter for p in self._hands.values()]
+
+    def set_smoothing_preset(self, name: str) -> None:
+        """leve = mais rápido (menos atraso, mais tremor); forte = mais estável (mais atraso)."""
+        k_cut, k_beta = SMOOTHING_PRESETS[name]
+        for f, (cut, beta) in self._filter_base.items():
+            f.min_cutoff, f.beta = cut * k_cut, beta * k_beta
+        self.smoothing_preset = name
+
+    def next_smoothing_preset(self) -> str:
+        names = list(SMOOTHING_PRESETS)
+        self.set_smoothing_preset(names[(names.index(self.smoothing_preset) + 1) % len(names)])
+        return self.smoothing_preset
 
     def close(self) -> None:
         self.backend.close()
@@ -273,6 +299,9 @@ class Tracker:
         raw = self.backend.detect(rgb, scale)
 
         state = BodyState(width=w, height=h, blendshapes=raw.blendshapes)
+        if self.constraints and raw.pose is not None and raw.visibility is not None:
+            raw.pose = reject_glitches(raw.pose, self._pose.value, raw.visibility, state.pose_fixes,
+                                       self._glitch_held)
         if raw.head_angles is not None:
             ang = self._angles_filter(raw.head_angles, t) if self.smoothing else raw.head_angles
             state.head_angles = tuple(float(a) for a in ang)
@@ -290,6 +319,10 @@ class Tracker:
                         frame_bgr, raw.hands.get(side), val, side)
             elif self.hand_mesh is not None:
                 self.hand_mesh.reset(side)
+        if self.constraints and state.pose is not None:
+            # Corrige só o que é impossível (não mexe no estado dos filtros).
+            state.pose, state.pose_visibility = apply_constraints(
+                state.pose, state.pose_visibility, state.hands, state.pose_fixes)
         return state
 
     def _smooth(self, part: _Part, pts: np.ndarray | None, t: float) -> np.ndarray | None:
