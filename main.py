@@ -11,6 +11,8 @@ Teclas:
   e        ligar/desligar expressões exageradas (precisa de calibração)
   + / -    aumentar/diminuir a intensidade do exagero
   s        ligar/desligar suavização
+  v        ligar/desligar a câmara virtual (avatar como webcam no OBS/Teams/Zoom/Discord)
+  b        mudar o fundo do avatar (gradiente / verde / azul / magenta para chroma key)
   p        guardar captura de ecrã em screenshots/
 """
 from __future__ import annotations
@@ -32,9 +34,11 @@ from avatar_app.calibration import Calibrator
 from avatar_app.debug_draw import draw_landmarks
 from avatar_app.hand_mesh import N_MEASURABLE
 from avatar_app.renderer import AvatarRenderer
+from avatar_app.streaming import BACKGROUND_NAMES, VirtualCamera, background_color
 from avatar_app.tracker import BodyState, Tracker
 
 WINDOW = "Avatar MediaPipe"
+STREAM_WINDOW = "Avatar (stream)"
 CALIBRATION_FILE = Path(__file__).resolve().parent / "calibration.json"
 
 
@@ -52,7 +56,26 @@ def parse_args() -> argparse.Namespace:
                     help="não medir o contorno dos dedos (usa larguras por defeito)")
     ap.add_argument("--no-mirror", action="store_true", help="não espelhar a imagem")
     ap.add_argument("--palette", type=int, default=0)
+    # Streaming.
+    ap.add_argument("--virtual-cam", action="store_true",
+                    help="ligar logo a câmara virtual (precisa do OBS Studio instalado no Windows)")
+    ap.add_argument("--stream-window", action="store_true",
+                    help="abrir uma janela só com o avatar (para 'Captura de janela' no OBS)")
+    ap.add_argument("--output", default=None, metavar="LxA",
+                    help="resolução da saída de stream, ex.: 1280x720 (por defeito = a da webcam)")
+    ap.add_argument("--background", choices=BACKGROUND_NAMES, default="gradiente",
+                    help="fundo do avatar; verde/azul/magenta para chroma key")
     return ap.parse_args()
+
+
+def parse_size(text: str | None, default: tuple[int, int]) -> tuple[int, int]:
+    if not text:
+        return default
+    try:
+        w, h = (int(v) for v in text.lower().split("x"))
+        return w, h
+    except ValueError:
+        sys.exit(f"--output inválido: {text!r} (usa por exemplo 1280x720)")
 
 
 def open_camera(index: int, width: int, height: int) -> cv2.VideoCapture:
@@ -66,7 +89,8 @@ def open_camera(index: int, width: int, height: int) -> cv2.VideoCapture:
 
 
 def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool,
-             calib_status: str | None = None, exaggeration: float | None = None) -> None:
+             calib_status: str | None = None, exaggeration: float | None = None,
+             stream_status: str | None = None) -> None:
     def status(label, ok):
         return f"{label}:{'OK' if ok else '--'}"
 
@@ -92,6 +116,8 @@ def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool,
                      f"  sobrancelhas {brow:+.2f}")
     if s.calibrated:
         lines.append(f"exagero {'x%.2f' % exaggeration if exaggeration else 'OFF'}  [e] ligar/desligar  [+/-] intensidade")
+    if stream_status:
+        lines.append(stream_status)
     lines.append("[c] cores [d] landmarks [w] webcam [h] cabeca 3D [k] calibrar [s] suavizar [p] print [q] sair")
 
     y = 24
@@ -117,11 +143,24 @@ def main() -> None:
 
     tracker = Tracker(pose_model=args.pose_model, backend=args.backend, hand_mesh=not args.no_hand_mesh)
     renderer = AvatarRenderer(args.palette)
+    renderer.background = background_color(args.background)
+    background_name = args.background
     calibrator = Calibrator(CALIBRATION_FILE)
     show_landmarks, show_webcam = True, True
     fps, last = 0.0, time.perf_counter()
 
+    # Saída de stream: tamanho por defeito = o da webcam (o OpenCV pode não dar o pedido).
+    cam_size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or args.width,
+                int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or args.height)
+    out_size = parse_size(args.output, cam_size)
+    vcam = VirtualCamera(*out_size)
+    if args.virtual_cam:
+        vcam.start()
+
     cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
+    if args.stream_window:
+        cv2.namedWindow(STREAM_WINDOW, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(STREAM_WINDOW, *out_size)
     try:
         while True:
             ok, frame = cap.read()
@@ -135,6 +174,14 @@ def main() -> None:
             calibrator.process(state)  # recolhe a pose neutra ou aplica a calibração
             avatar = renderer.render(state)
 
+            # Saída limpa para o stream (sem HUD nem webcam), antes de desenhar o HUD.
+            stream = avatar
+            if (avatar.shape[1], avatar.shape[0]) != out_size:
+                stream = cv2.resize(avatar, out_size, interpolation=cv2.INTER_AREA)
+            vcam.send(stream)
+            if args.stream_window:
+                cv2.imshow(STREAM_WINDOW, stream)
+
             now = time.perf_counter()
             fps = 0.9 * fps + 0.1 * (1.0 / max(now - last, 1e-6))
             last = now
@@ -144,9 +191,16 @@ def main() -> None:
                     draw_landmarks(frame, state)
                 view = np.hstack([frame, avatar])
             else:
-                view = avatar
+                view = avatar.copy()
+            if vcam.active:
+                cam_text = f"camara virtual ON ({vcam.device})"
+            elif vcam.error:
+                cam_text = f"camara virtual com erro: {vcam.error[:60]}"
+            else:
+                cam_text = "camara virtual OFF"
+            stream_status = f"stream {out_size[0]}x{out_size[1]}: {cam_text} [v]   fundo {background_name} [b]"
             draw_hud(view, state, fps, tracker.smoothing, calibrator.status(),
-                     renderer.exaggeration if renderer.exaggerate else None)
+                     renderer.exaggeration if renderer.exaggerate else None, stream_status)
             cv2.imshow(WINDOW, view)
 
             key = cv2.waitKey(1) & 0xFF
@@ -172,6 +226,15 @@ def main() -> None:
                 renderer.exaggeration = max(0.25, renderer.exaggeration - 0.25)
             elif key == ord("s"):
                 tracker.smoothing = not tracker.smoothing
+            elif key == ord("v"):
+                if vcam.active:
+                    vcam.stop()
+                else:
+                    vcam.start()
+            elif key == ord("b"):
+                background_name = BACKGROUND_NAMES[(BACKGROUND_NAMES.index(background_name) + 1)
+                                                   % len(BACKGROUND_NAMES)]
+                renderer.background = background_color(background_name)
             elif key == ord("p"):
                 out = Path("screenshots")
                 out.mkdir(exist_ok=True)
@@ -179,6 +242,7 @@ def main() -> None:
                 cv2.imwrite(str(path), view)
                 print(f"Guardado {path}")
     finally:
+        vcam.stop()
         cap.release()
         tracker.close()
         cv2.destroyAllWindows()

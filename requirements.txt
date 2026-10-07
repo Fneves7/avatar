@@ -2,3 +2,5 @@
 # por isso não precisa de descarregar nada de storage.googleapis.com.
 # Já traz opencv-contrib-python e numpy<2 como dependências.
 mediapipe==0.10.21
+# Câmara virtual para streaming (no Windows usa a câmara virtual do OBS Studio).
+pyvirtualcam>=0.11

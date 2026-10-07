@@ -61,8 +61,32 @@ Opções:
 | `e` | liga ou desliga as expressões exageradas (só com calibração) |
 | `+` / `-` | aumenta ou diminui a intensidade do exagero |
 | `s` | liga ou desliga a suavização |
+| `v` | liga ou desliga a câmara virtual |
+| `b` | muda o fundo do avatar (gradiente, verde, azul ou magenta) |
 | `p` | guarda uma captura em `screenshots/` |
 | `q` / `Esc` | sai |
+
+## Streaming
+
+O avatar sai limpo para o stream, sem HUD nem webcam. Há duas formas de o usar:
+
+- **Câmara virtual (recomendado).** O avatar aparece como uma webcam chamada "OBS Virtual Camera" no OBS, Teams, Zoom, Discord, etc. Precisa do OBS Studio instalado, porque é o driver dele que é usado. Liga e desliga com `v`, ou já ligada no arranque:
+
+  ```bash
+  .venv\Scripts\python.exe main.py --virtual-cam
+  ```
+
+  No OBS, junta uma fonte "Dispositivo de captura de vídeo" com a "OBS Virtual Camera". Se o próprio OBS tiver a câmara virtual ligada, desliga-a primeiro: só um programa a pode usar de cada vez.
+
+- **Janela só com o avatar.** Abre uma janela "Avatar (stream)" para usar com "Captura de janela" no OBS:
+
+  ```bash
+  .venv\Scripts\python.exe main.py --stream-window
+  ```
+
+**Fundo para chroma key:** `--background verde|azul|magenta`, ou a tecla `b` ao vivo. No OBS, junta à fonte o filtro "Chroma Key" com a mesma cor. Escolhe uma cor que não exista no avatar: com a paleta "Clássico" a camisola é azul, por isso aí usa verde ou magenta.
+
+**Resolução da saída:** `--output 1920x1080`. Por defeito é a resolução da webcam.
 
 ## Estrutura
 
@@ -74,6 +98,7 @@ avatar_app/
   smoothing.py           filtro One Euro (reduz o tremor sem acrescentar atraso)
   head.py                crânio, nuca e orelhas estimados em 3D a partir da malha da cara
   hand_mesh.py           largura real dos dedos medida na imagem + malha/contorno da mão
+  streaming.py           câmara virtual (pyvirtualcam) e fundos para chroma key
   renderer.py            desenha o avatar (cabeça, pescoço, tronco, braços, mãos e dedos)
   debug_draw.py          desenha os landmarks sobre a webcam
 ```

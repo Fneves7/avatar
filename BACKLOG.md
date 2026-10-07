@@ -26,10 +26,11 @@ Objetivo do projeto: avatar em tempo real para **streaming**.
 
 ## Streaming
 
-- [ ] **Câmara virtual:** enviar o avatar como webcam para OBS, Teams, Zoom e Discord (`pyvirtualcam`).
-- [ ] **Fundo para OBS:** cor sólida para chroma key, ou fundo transparente.
-- [ ] **Janela só com o avatar:** sem HUD nem webcam, pronta para captura.
-- [ ] **Modo performance:** resolução de deteção mais baixa e menos medições, para dar mais FPS durante o stream.
+- [x] **Câmara virtual:** o avatar como webcam ("OBS Virtual Camera") para OBS, Teams, Zoom e Discord. Usa `pyvirtualcam`, liga e desliga com a tecla `v` ou com `--virtual-cam`, e `--output` define a resolução.
+- [x] **Fundo para chroma key:** verde, azul ou magenta (`--background`, ou a tecla `b` ao vivo).
+- [x] **Janela só com o avatar** (`--stream-window`): sem HUD nem webcam, para "Captura de janela" no OBS.
+- [ ] **Fundo transparente:** a câmara virtual não suporta transparência. Seria preciso outra via, por exemplo uma fonte de browser no OBS.
+- [ ] **Fluidez:** cada frame do Holistic custa ~55 ms (≈ 15–18 FPS no máximo). Medido em 2026-10-07: reduzir a imagem de deteção ou desligar a íris **não** acelera nada. O que pode ajudar é correr a deteção numa thread separada e desenhar o avatar a 30 FPS, interpolando entre deteções.
 
 ## Avatares
 

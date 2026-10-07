@@ -152,6 +152,7 @@ class AvatarRenderer:
         self.exaggeration = 1.0     # intensidade (teclas + e -)
         self._calibrated = False
         self._bg_cache: dict = {}
+        self.background: tuple[int, int, int] | None = None  # cor sólida (chroma key) ou None = gradiente
 
     @property
     def palette(self) -> Palette:
@@ -162,6 +163,8 @@ class AvatarRenderer:
 
     # ------------------------------------------------------------------ fundo
     def _background(self, w: int, h: int) -> np.ndarray:
+        if self.background is not None:
+            return np.full((h, w, 3), self.background, np.uint8)
         key = (w, h, self.palette_index)
         if key not in self._bg_cache:
             p = self.palette
