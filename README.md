@@ -54,6 +54,7 @@ Opções:
 | Tecla | Ação |
 |---|---|
 | `c` | muda a paleta (Clássico, Neon, Floresta, Robô) |
+| `y` | muda o estilo do avatar (cartoon ou robô); também `--style robo` no arranque |
 | `d` | mostra ou esconde os landmarks sobre a webcam |
 | `w` | mostra só o avatar ou o avatar ao lado da webcam |
 | `k` | calibra a pose neutra: olha em frente com a cara neutra durante ~2 s; fica guardada em `calibration.json` |
@@ -113,9 +114,29 @@ avatar_app/
   idle.py                idle: respiração subtil quando a pessoa está parada
   secondary.py           movimento secundário: molas do cabelo e das mangas
   constraints.py         limites anatómicos da pose (cotovelos, saltos, braços, ancas)
-  renderer.py            desenha o avatar (cabeça, pescoço, tronco, braços, mãos e dedos)
+  animation.py           camada de animação partilhada (olhar vivo, idle, molas, transições) -> AnimFrame
+  rig.py                 parâmetros do avatar independentes do desenho (cabeça, olhos, boca, esqueleto)
+  renderer.py            fachada: fundo + animação + rig + estilo escolhido
+  styles/cartoon.py      estilo "cartoon" (o avatar original, desenhado a partir da malha)
+  styles/robot.py        estilo "robô" (exemplo de estilo feito só a partir do rig)
+  landmarks.py           índices dos landmarks do MediaPipe usados pelo rig e pelos estilos
+  drawing.py             paletas e utilitários de desenho partilhados
   debug_draw.py          desenha os landmarks sobre a webcam
 ```
+
+## Estilos de avatar (rig + estilo)
+
+O desenho está separado em três camadas:
+
+1. **Animação** ([animation.py](avatar_app/animation.py)): o olhar vivo, o idle, o movimento secundário, as transições e os olhos fechados, iguais para todos os avatares.
+2. **Rig** ([rig.py](avatar_app/rig.py)): parâmetros independentes de como o avatar é desenhado, parecidos com os de um modelo VTuber.
+   - **Cabeça:** centro, tamanho, inclinação e rotação.
+   - **Olhos:** abertura de cada olho e direção do olhar.
+   - **Expressão:** sobrancelhas, abertura da boca e sorriso.
+   - **Corpo:** respiração, esqueleto do tronco, braços e mãos, e as molas do cabelo e das mangas.
+3. **Estilo** ([styles/](avatar_app/styles)): como o avatar é desenhado. A tecla `y` alterna entre estilos.
+
+**Para criar um avatar novo:** faz uma classe com `name` e `draw(img, frame, rig, palette)` e junta-a a `STYLES` em [styles/\_\_init\_\_.py](avatar_app/styles/__init__.py). O estilo [robô](avatar_app/styles/robot.py) serve de exemplo, porque usa só o rig. O cartoon também lê a malha da cara diretamente, porque desenha a partir dos 478 pontos.
 
 ## Malha das mãos
 

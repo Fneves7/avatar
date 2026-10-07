@@ -42,7 +42,7 @@ Objetivo do projeto: avatar em tempo real para **streaming**.
 
 ## Avatares
 
-- [ ] **Separar o rig do estilo:** o rig são as posições calculadas; o estilo é a forma de as desenhar. Permite vários avatares sem mexer na deteção.
+- [x] **Separar o rig do estilo:** `animation.py` (animação partilhada), `rig.py` (parâmetros estilo VTuber) e `styles/` (cartoon e robô; a tecla `y` alterna). O cartoon ficou pixel a pixel igual ao do commit anterior (450/450 frames de teste). O robô é o exemplo de um estilo feito só a partir do rig.
 - [ ] **Avatares PNG por camadas** (estilo VTuber 2D): cabeça, olhos, várias bocas, braços e mãos desenhados num editor.
 - [ ] **Avatar 3D** (VRM, Blender ou three.js).
 

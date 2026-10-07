@@ -3,6 +3,7 @@
 Teclas:
   q / ESC  sair
   c        mudar paleta de cores do avatar
+  y        mudar o estilo do avatar (cartoon / robô)
   d        mostrar/esconder landmarks sobre a webcam
   w        mostrar/esconder a imagem da webcam
   h        alternar cabeça 3D (crânio, nuca, orelhas) / cabeça simples
@@ -41,6 +42,7 @@ from avatar_app.debug_draw import draw_landmarks
 from avatar_app.hand_mesh import N_MEASURABLE
 from avatar_app.pipeline import DetectionWorker, StateBlender
 from avatar_app.renderer import AvatarRenderer
+from avatar_app.styles import STYLES
 from avatar_app.streaming import BACKGROUND_NAMES, VirtualCamera, background_color
 from avatar_app.tracker import BodyState, Tracker
 
@@ -63,6 +65,8 @@ def parse_args() -> argparse.Namespace:
                     help="não medir o contorno dos dedos (usa larguras por defeito)")
     ap.add_argument("--no-mirror", action="store_true", help="não espelhar a imagem")
     ap.add_argument("--palette", type=int, default=0)
+    ap.add_argument("--style", choices=[cls.name for cls in STYLES], default="cartoon",
+                    help="estilo do avatar (também muda ao vivo com a tecla y)")
     # Streaming.
     ap.add_argument("--virtual-cam", action="store_true",
                     help="ligar logo a câmara virtual (precisa do OBS Studio instalado no Windows)")
@@ -106,7 +110,8 @@ def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool,
              stream_status: str | None = None, detect_fps: float | None = None,
              lively: bool = True, transitions: bool = True, idle: float | None = 0.0,
              secondary: bool = True, smoothing_preset: str = "normal",
-             constraints: bool | None = None, fixes: list[str] | None = None) -> None:
+             constraints: bool | None = None, fixes: list[str] | None = None,
+             style_name: str | None = None) -> None:
     def status(label, ok):
         return f"{label}:{'OK' if ok else '--'}"
 
@@ -143,6 +148,8 @@ def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool,
         lines.append(text)
     if stream_status:
         lines.append(stream_status)
+    if style_name:
+        lines.append(f"avatar: {style_name} [y]")
     lines.append("[c] cores [d] landmarks [w] webcam [h] cabeca 3D [k] calibrar [s] suavizar [p] print [q] sair")
 
     y = 24
@@ -167,7 +174,7 @@ def main() -> None:
         sys.exit(f"Não foi possível abrir a webcam {args.camera}.")
 
     tracker = Tracker(pose_model=args.pose_model, backend=args.backend, hand_mesh=not args.no_hand_mesh)
-    renderer = AvatarRenderer(args.palette)
+    renderer = AvatarRenderer(args.palette, style=args.style)
     renderer.background = background_color(args.background)
     background_name = args.background
     calibrator = Calibrator(CALIBRATION_FILE)
@@ -245,7 +252,8 @@ def main() -> None:
                      renderer.exaggeration if renderer.exaggerate else None, stream_status, worker.fps,
                      renderer.lively_eyes, renderer.transitions,
                      renderer.idle.weight if renderer.idle_enabled else None, renderer.secondary_enabled,
-                     tracker.smoothing_preset, tracker.constraints, detected.pose_fixes)
+                     tracker.smoothing_preset, tracker.constraints, detected.pose_fixes,
+                     renderer.style.name)
             cv2.imshow(WINDOW, view)
 
             # Ritmo fixo: espera o que falta para completar o período do frame.
@@ -255,6 +263,8 @@ def main() -> None:
                 break
             if key == ord("c"):
                 renderer.next_palette()
+            elif key == ord("y"):
+                renderer.next_style()
             elif key == ord("d"):
                 show_landmarks = not show_landmarks
             elif key == ord("w"):

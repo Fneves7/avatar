@@ -7,7 +7,7 @@ from mediapipe.tasks.python import vision
 
 from .hand_mesh import HandMesh
 from .head import estimate_head
-from .renderer import FACE_OVAL
+from .landmarks import FACE_OVAL
 from .tracker import BodyState
 
 _FACE = [(c.start, c.end) for c in vision.FaceLandmarksConnections.FACE_LANDMARKS_CONTOURS]
