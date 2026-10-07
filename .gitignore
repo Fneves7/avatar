@@ -4,3 +4,4 @@ models/
 screenshots/
 .venv/
 calibration.json
+.pytest_cache/

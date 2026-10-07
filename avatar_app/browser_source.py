@@ -6,7 +6,7 @@ corre um servidor HTTP local (só em 127.0.0.1) com:
   /frame   o último frame em PNG com transparência, recortado à zona do avatar
            (?after=N espera até haver um frame mais recente do que N, até 1 s).
 O PNG é codificado na thread do servidor, por isso não atrasa o desenho do avatar.
-No OBS: Fontes -> + -> Browser -> URL http://localhost:8765 (largura/altura do stream).
+No OBS: Fontes -> + -> Browser -> URL http://127.0.0.1:8765 (largura/altura do stream).
 """
 from __future__ import annotations
 
@@ -60,7 +60,9 @@ class _Server(ThreadingHTTPServer):
 
 class BrowserSource:
     def __init__(self, port: int = 8765, host: str = "127.0.0.1"):
-        self.url = f"http://localhost:{port}"
+        # 127.0.0.1 e não "localhost": no Windows "localhost" tenta primeiro o IPv6 (::1), onde
+        # o servidor não está, e alguns clientes perdem ~2 s em cada pedido.
+        self.url = f"http://127.0.0.1:{port}"
         self._cond = threading.Condition()
         self._frame: tuple[np.ndarray | None, tuple[int, int, int, int], tuple[int, int]] | None = None
         self._seq = 0

@@ -101,13 +101,30 @@ O avatar sai limpo para o stream, sem HUD nem webcam. Há duas formas de o usar:
 .venv\Scripts\python.exe main.py --browser-source
 ```
 
-No OBS, junta uma fonte **Browser** com o URL `http://localhost:8765` e o tamanho do teu stream.
+No OBS, junta uma fonte **Browser** com o URL `http://127.0.0.1:8765` e o tamanho do teu stream. Usa `127.0.0.1` e não `localhost`: no Windows, `localhost` tenta primeiro o IPv6 e alguns programas perdem ~2 s em cada pedido.
 
 - **Como funciona:** o programa serve, só neste computador (127.0.0.1), uma página transparente com o avatar. A transparência é exata: o mesmo frame é desenhado sobre preto e sobre branco, e a diferença dá a opacidade de cada píxel, incluindo as bordas suavizadas.
 - **Custo:** cerca de 3× o desenho normal, e só enquanto o OBS está a mostrar a página. `--browser-fps 15` baixa o ritmo desta saída, se for preciso.
 - **Porta:** `--browser-port` muda a porta.
 
 **Fluidez:** a deteção (MediaPipe, ~55–70 ms por frame) corre numa thread própria, e o avatar é desenhado e enviado a ritmo fixo (`--fps 30`, por defeito). Entre deteções, os pontos deslizam para a última posição detetada, o que custa ~50 ms de atraso em troca de movimento fluido. `--sync` volta ao modo antigo, com um desenho por deteção. O HUD mostra os dois ritmos (`FPS avatar` e `detecao`).
+
+## Testes
+
+Os testes não precisam de webcam: usam caras, poses e mãos sintéticas (a cara vem do modelo canónico do MediaPipe, em `tests/data/`).
+
+```bash
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+```
+
+```bash
+.venv\Scripts\python.exe -m pytest
+```
+
+Este comando corre os testes rápidos (~15 s): animação, calibração, limites anatómicos, malha das mãos, rig e estilos, e transparência com a Fonte de Browser. Há mais dois grupos, que só correm quando os pedes:
+
+- `-m mediapipe`: o ciclo completo do `main.py` com uma câmara simulada e o MediaPipe a sério.
+- `-m parity`: o estilo cartoon tem de ficar pixel a pixel igual ao último commit. Serve para refatorizações que não devem mudar o aspeto. `AVATAR_PARITY_REF=<commit>` compara com outro commit.
 
 ## Estrutura
 
@@ -134,6 +151,7 @@ avatar_app/
   styles/robot.py        estilo "robô" (exemplo de estilo feito só a partir do rig)
   styles/png.py          estilo "png": avatar de imagens PNG por camadas (estilo VTuber 2D)
 tools/make_sample_avatar.py  gera o avatar PNG de exemplo (avatars/gato)
+tests/                   testes pytest sem webcam (ver "Testes")
 avatars/gato/            imagens PNG + avatar.json do avatar de exemplo
   landmarks.py           índices dos landmarks do MediaPipe usados pelo rig e pelos estilos
   drawing.py             paletas e utilitários de desenho partilhados
