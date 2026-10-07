@@ -10,6 +10,7 @@ Teclas:
   K        apagar a calibração
   e        ligar/desligar expressões exageradas (precisa de calibração)
   l        ligar/desligar o olhar vivo (piscar automático + micro-movimentos dos olhos)
+  t        ligar/desligar as transições suaves (mãos e cara entram/saem aos poucos)
   + / -    aumentar/diminuir a intensidade do exagero
   s        ligar/desligar suavização
   v        ligar/desligar a câmara virtual (avatar como webcam no OBS/Teams/Zoom/Discord)
@@ -99,7 +100,7 @@ def open_camera(index: int, width: int, height: int) -> cv2.VideoCapture:
 def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool,
              calib_status: str | None = None, exaggeration: float | None = None,
              stream_status: str | None = None, detect_fps: float | None = None,
-             lively: bool = True) -> None:
+             lively: bool = True, transitions: bool = True) -> None:
     def status(label, ok):
         return f"{label}:{'OK' if ok else '--'}"
 
@@ -126,7 +127,7 @@ def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool,
                      f"  sobrancelhas {brow:+.2f}")
     if s.calibrated:
         lines.append(f"exagero {'x%.2f' % exaggeration if exaggeration else 'OFF'}  [e] ligar/desligar  [+/-] intensidade")
-    lines.append(f"olhar vivo {'ON' if lively else 'OFF'} [l]")
+    lines.append(f"olhar vivo {'ON' if lively else 'OFF'} [l]   transicoes {'ON' if transitions else 'OFF'} [t]")
     if stream_status:
         lines.append(stream_status)
     lines.append("[c] cores [d] landmarks [w] webcam [h] cabeca 3D [k] calibrar [s] suavizar [p] print [q] sair")
@@ -229,7 +230,7 @@ def main() -> None:
             stream_status = f"stream {out_size[0]}x{out_size[1]}: {cam_text} [v]   fundo {background_name} [b]"
             draw_hud(view, state, fps, tracker.smoothing, calibrator.status(),
                      renderer.exaggeration if renderer.exaggerate else None, stream_status, worker.fps,
-                     renderer.lively_eyes)
+                     renderer.lively_eyes, renderer.transitions)
             cv2.imshow(WINDOW, view)
 
             # Ritmo fixo: espera o que falta para completar o período do frame.
@@ -249,6 +250,8 @@ def main() -> None:
                 calibrator.start()
             elif key == ord("K"):
                 calibrator.reset()
+            elif key == ord("t"):
+                renderer.transitions = not renderer.transitions
             elif key == ord("l"):
                 renderer.lively_eyes = not renderer.lively_eyes
             elif key == ord("e"):

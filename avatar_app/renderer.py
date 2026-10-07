@@ -1,6 +1,7 @@
 """Desenha um avatar 2D em estilo cartoon a partir do BodyState."""
 from __future__ import annotations
 
+import dataclasses
 import time
 from dataclasses import dataclass
 
@@ -8,6 +9,7 @@ import cv2
 import numpy as np
 
 from .eyes import EyeLife
+from .transitions import Fade
 from .hand_mesh import HandMesh
 from .head import NECK_TOP, Ear, estimate_head
 from .tracker import (L_EAR, L_ELBOW, L_HIP, L_SHOULDER, L_WRIST, NOSE, R_EAR, R_ELBOW, R_HIP,
@@ -155,6 +157,10 @@ class AvatarRenderer:
         self.eye_life = EyeLife()
         self._auto_blink = 0.0      # fecho do piscar automático neste frame (0..1)
         self._saccade = (0.0, 0.0)  # desvio da íris neste frame (x raio da íris)
+        self.transitions = True     # mãos/cara entram e saem aos poucos (tecla t)
+        self._hand_fades = {L_WRIST: Fade(), R_WRIST: Fade()}
+        self._face_fade = Fade()
+        self._hands_drawn: set[int] = set()
         self.exaggerate = True      # expressões exageradas (tecla e); só com calibração
         self.exaggeration = 1.0     # intensidade (teclas + e -)
         self._calibrated = False
@@ -186,16 +192,23 @@ class AvatarRenderer:
 
     # ----------------------------------------------------------------- render
     def render(self, s: BodyState, t: float | None = None) -> np.ndarray:
-        """t: instante (s) para as animações dos olhos; por defeito o relógio atual."""
+        """t: instante (s) para as animações (olhos, transições); por defeito o relógio atual."""
         img = self._background(s.width, s.height)
         p = self.palette
         ow = max(2, s.width // 320)  # espessura do contorno
+        now = time.monotonic() if t is None else t
+
+        # Transições: opacidade de cada mão e da cara (e o último valor visto, para desvanecer).
+        for side, fade in self._hand_fades.items():
+            hand = s.hands.get(side)
+            fade.update(now, None if hand is None else (hand, s.hand_meshes.get(side)), self.transitions)
+        self._face_fade.update(now, None if s.face is None else (s.face, s.blendshapes), self.transitions)
+        self._hands_drawn = set()
 
         sw = self._shoulder_width(s)
         self._geo = estimate_head(s.face, FACE_OVAL) if (s.face is not None and self.head_3d) else None
         self._update_eyes_closed(s)
         if self.lively_eyes:
-            now = time.monotonic() if t is None else t
             self._auto_blink, self._saccade = self.eye_life.update(now, any(self._eyes_closed))
         else:
             self._auto_blink, self._saccade = 0.0, (0.0, 0.0)
@@ -208,17 +221,46 @@ class AvatarRenderer:
         if s.pose is not None:
             self._draw_torso(img, s, sw, ow)
             self._draw_collar(img, s, sw, ow)
-        if s.face is not None:
-            self._draw_face(img, s, ow)
-        elif s.pose is not None:
+        # Cabeça: a cara desvanece por cima da cabeça simples da pose (e vice-versa).
+        face_fade = self._face_fade
+        if s.pose is not None and (s.face is None or face_fade.alpha < 1.0):
             self._draw_fallback_head(img, s, ow)
+        if face_fade.visible:
+            if s.face is None:  # a desaparecer: desenha a última cara vista
+                last_face, last_bs = face_fade.data
+                fs = dataclasses.replace(s, face=last_face, blendshapes=last_bs)
+                self._geo = estimate_head(last_face, FACE_OVAL) if self.head_3d else None
+            else:
+                fs = s
+            self._faded(img, face_fade.alpha, lambda im: self._draw_face(im, fs, ow))
         for side in arms_front:
             self._draw_arm(img, s, side, sw, ow)
-        # Mãos detetadas sem pose (ex.: só as mãos em frente à câmara).
-        if s.pose is None:
-            for side, hand in s.hands.items():
-                self._draw_hand(img, hand, ow, s.hand_meshes.get(side))
+        # Mãos que não foram desenhadas com o braço: sem pose, braço invisível ou a desaparecer.
+        for side in self._hand_fades:
+            if side not in self._hands_drawn:
+                self._draw_hand_faded(img, side, ow)
         return img
+
+    @staticmethod
+    def _faded(img: np.ndarray, alpha: float, draw) -> None:
+        """Desenha com opacidade alpha (só copia a imagem quando é mesmo preciso)."""
+        if alpha >= 0.999:
+            draw(img)
+            return
+        if alpha <= 0.001:
+            return
+        layer = img.copy()
+        draw(layer)
+        cv2.addWeighted(layer, alpha, img, 1.0 - alpha, 0, dst=img)
+
+    def _draw_hand_faded(self, img: np.ndarray, side: int, ow: int) -> None:
+        """Mão de um lado com a opacidade da transição (a atual, ou a última a desvanecer)."""
+        fade = self._hand_fades[side]
+        if not fade.visible:
+            return
+        pts, mesh = fade.data
+        self._faded(img, fade.alpha, lambda im: self._draw_hand(im, pts, ow, mesh))
+        self._hands_drawn.add(side)
 
     # ------------------------------------------------------------- utilidades
     @staticmethod
@@ -339,10 +381,11 @@ class AvatarRenderer:
             # Punho da manga por cima do cotovelo.
             Group().circle(el, 0.13 * sw).draw(img, p.shirt, p.outline, ow)
             cv2.line(img, _ip(sh), _ip(el), p.shirt, max(1, int(0.28 * sw)), AA)
-            if hand is not None:
-                self._draw_hand(img, hand, ow, s.hand_meshes.get(side))
-            elif s.visible(side, 0.5):
+            # Luva da pose: sem mão, ou por baixo da mão enquanto esta ainda está a aparecer.
+            if (hand is None or self._hand_fades[side].alpha < 1.0) and s.visible(side, 0.5):
                 self._draw_mitten(img, s, side, sw, ow)
+            # Mão atual (ou a última, a desvanecer, por cima da luva).
+            self._draw_hand_faded(img, side, ow)
 
     def _draw_hand(self, img, hand: np.ndarray, ow: int, mesh: HandMesh | None = None):
         if mesh is not None:
