@@ -54,7 +54,7 @@ Opções:
 | Tecla | Ação |
 |---|---|
 | `c` | muda a paleta (Clássico, Neon, Floresta, Robô) |
-| `y` | muda o estilo do avatar (cartoon ou robô); também `--style robo` no arranque |
+| `y` | muda o estilo do avatar (cartoon, robô ou png); também `--style png` no arranque |
 | `d` | mostra ou esconde os landmarks sobre a webcam |
 | `w` | mostra só o avatar ou o avatar ao lado da webcam |
 | `k` | calibra a pose neutra: olha em frente com a cara neutra durante ~2 s; fica guardada em `calibration.json` |
@@ -119,6 +119,9 @@ avatar_app/
   renderer.py            fachada: fundo + animação + rig + estilo escolhido
   styles/cartoon.py      estilo "cartoon" (o avatar original, desenhado a partir da malha)
   styles/robot.py        estilo "robô" (exemplo de estilo feito só a partir do rig)
+  styles/png.py          estilo "png": avatar de imagens PNG por camadas (estilo VTuber 2D)
+tools/make_sample_avatar.py  gera o avatar PNG de exemplo (avatars/gato)
+avatars/gato/            imagens PNG + avatar.json do avatar de exemplo
   landmarks.py           índices dos landmarks do MediaPipe usados pelo rig e pelos estilos
   drawing.py             paletas e utilitários de desenho partilhados
   debug_draw.py          desenha os landmarks sobre a webcam
@@ -137,6 +140,31 @@ O desenho está separado em três camadas:
 3. **Estilo** ([styles/](avatar_app/styles)): como o avatar é desenhado. A tecla `y` alterna entre estilos.
 
 **Para criar um avatar novo:** faz uma classe com `name` e `draw(img, frame, rig, palette)` e junta-a a `STYLES` em [styles/\_\_init\_\_.py](avatar_app/styles/__init__.py). O estilo [robô](avatar_app/styles/robot.py) serve de exemplo, porque usa só o rig. O cartoon também lê a malha da cara diretamente, porque desenha a partir dos 478 pontos.
+
+### Avatar PNG por camadas (estilo VTuber 2D)
+
+O estilo `png` desenha um avatar feito de imagens PNG com transparência. Vêm de uma pasta com um `avatar.json`; por defeito é `avatars/gato`, um gato de exemplo gerado por código com `tools/make_sample_avatar.py`.
+
+```bash
+.venv\Scripts\python.exe main.py --style png
+```
+
+**As imagens** (os nomes dos ficheiros são fixos):
+
+| Parte | Ficheiros |
+|---|---|
+| Cabeça (todas com o mesmo tamanho de tela, ex.: 512×512) | `hair_back`, `head`, `hair_front`, `blush` |
+| Olhos (`_l`/`_r` = olho à esquerda/direita na imagem) | `eye_white_*`, `iris_*` (recortada pelo branco), `eye_half_*`, `eye_closed_*` |
+| Expressão | `brow_l`, `brow_r`; `mouth_closed`, `mouth_smile`, `mouth_open_small`, `mouth_open` |
+| Corpo | `torso`, `neck`, `upper_arm`, `forearm`, `hand_open`, `hand_fist` |
+
+**O `avatar.json`** diz onde encaixa cada imagem:
+- **cabeça:** o centro da cara e a largura da cara na tela; o centro de cada olho e de cada sobrancelha; a paralaxe de cada camada.
+- **tronco:** os ombros e o centro das ancas.
+- **membros:** os pontos de início e fim, a largura do desenho e a espessura relativa aos ombros.
+- **mãos:** o pulso e a base do dedo do meio.
+
+**Para usar o teu próprio avatar:** desenha as imagens com os mesmos nomes, ajusta os pontos no `avatar.json` e corre com `--png-avatar avatars/<pasta>`.
 
 ## Malha das mãos
 

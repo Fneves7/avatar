@@ -38,6 +38,7 @@ class RigHead:
     mouth_width: float          # px
     mouth_open: float           # 0..1
     mouth_smile: float          # 0..1
+    turn: float = 0.0           # para onde aponta o nariz: -1 (esquerda da imagem) .. 1 (direita)
     alpha: float = 1.0          # opacidade (transições)
 
 
@@ -93,11 +94,13 @@ def _head(s: BodyState, face: np.ndarray, bs: dict[str, float], frame: AnimFrame
     eye_centers = np.array([f[EYE_A].mean(axis=0), f[EYE_B].mean(axis=0)])
     eye_open = np.ones(2)
     look = np.zeros(2)
+    # Eixos da cara (iguais para os dois olhos, para o olhar ter o mesmo sentido em ambos):
+    # u = para a direita da imagem ao longo da linha dos olhos, n = para baixo.
+    u = _unit(eye_line)
+    n = np.array([-u[1], u[0]])
     for i, (contour, (ci, _), blink_key, wide_key) in enumerate(
             ((EYE_A, IRIS_A, "eyeBlinkRight", "eyeWideRight"), (EYE_B, IRIS_B, "eyeBlinkLeft", "eyeWideLeft"))):
         eye = f[contour]
-        u = _unit(eye[8] - eye[0])
-        n = np.array([-u[1], u[0]])
         half_w = 0.5 * float(np.linalg.norm(eye[8] - eye[0])) or 1.0
         half_h = 0.5 * float(np.ptp((eye - eye_centers[i]) @ n)) or 1.0
         if calibrated:
@@ -128,10 +131,11 @@ def _head(s: BodyState, face: np.ndarray, bs: dict[str, float], frame: AnimFrame
     else:
         mouth_open = float(np.clip(gap / (0.25 * fh), 0, 1))
         smile = 0.0
+    turn = float(np.clip((f[1] - center) @ _unit(eye_line) / (0.35 * fw), -1, 1))
     return RigHead(center=center, size=fw, height=fh, roll=roll, yaw=yaw, pitch=pitch,
                    eye_centers=eye_centers, eye_open=eye_open, look=look, brow=brow,
                    mouth_center=mouth_center, mouth_width=mouth_width, mouth_open=mouth_open,
-                   mouth_smile=smile, alpha=alpha)
+                   mouth_smile=smile, turn=turn, alpha=alpha)
 
 
 def build_rig(frame: AnimFrame) -> Rig:

@@ -43,7 +43,8 @@ Objetivo do projeto: avatar em tempo real para **streaming**.
 ## Avatares
 
 - [x] **Separar o rig do estilo:** `animation.py` (animação partilhada), `rig.py` (parâmetros estilo VTuber) e `styles/` (cartoon e robô; a tecla `y` alterna). O cartoon ficou pixel a pixel igual ao do commit anterior (450/450 frames de teste). O robô é o exemplo de um estilo feito só a partir do rig.
-- [ ] **Avatares PNG por camadas** (estilo VTuber 2D): cabeça, olhos, várias bocas, braços e mãos desenhados num editor.
+- [x] **Avatares PNG por camadas** (estilo `png`): imagens com transparência e um `avatar.json` com os pontos de encaixe, animadas pelo rig. Os olhos (aberto, meio e fechado, um de cada vez, com a íris a seguir o olhar), as sobrancelhas, a boca (4 estados) e o rubor seguem as expressões. Há paralaxe ao rodar a cabeça, molas no pelo, membros esticados pelos ossos e patas abertas ou fechadas conforme os dedos. Inclui o avatar de exemplo "gato", gerado por `tools/make_sample_avatar.py`, a ~19 ms por frame.
+- [ ] **Desenhar um avatar PNG a sério** (o gato é só de teste), ou converter um modelo existente.
 - [ ] **Avatar 3D** (VRM, Blender ou three.js).
 
 ## Descartado

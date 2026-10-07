@@ -1,0 +1,116 @@
+{
+  "name": "Gato",
+  "notas": "Coordenadas em píxeis de cada imagem. Podes trocar qualquer PNG por outro desenho com o mesmo tamanho e os mesmos pontos de encaixe.",
+  "head": {
+    "canvas": [
+      512,
+      512
+    ],
+    "center": [
+      256,
+      290
+    ],
+    "face_width": 250,
+    "eyes": {
+      "l": [
+        196,
+        272
+      ],
+      "r": [
+        316,
+        272
+      ]
+    },
+    "eye_radius": 44,
+    "brows": {
+      "l": [
+        196,
+        210
+      ],
+      "r": [
+        316,
+        210
+      ]
+    },
+    "mouth": [
+      256,
+      368
+    ],
+    "parallax": {
+      "hair_back": -0.06,
+      "head": 0.0,
+      "eyes": 0.14,
+      "brows": 0.15,
+      "mouth": 0.12,
+      "hair_front": 0.08
+    }
+  },
+  "torso": {
+    "file": "torso.png",
+    "shoulders": [
+      [
+        96,
+        120
+      ],
+      [
+        416,
+        120
+      ]
+    ],
+    "hips": [
+      256,
+      500
+    ]
+  },
+  "neck": {
+    "file": "neck.png",
+    "start": [
+      40,
+      6
+    ],
+    "end": [
+      40,
+      114
+    ],
+    "width": 56,
+    "thickness": 0.42
+  },
+  "upper_arm": {
+    "file": "upper_arm.png",
+    "start": [
+      48,
+      14
+    ],
+    "end": [
+      48,
+      206
+    ],
+    "width": 76,
+    "thickness": 0.26
+  },
+  "forearm": {
+    "file": "forearm.png",
+    "start": [
+      40,
+      10
+    ],
+    "end": [
+      40,
+      190
+    ],
+    "width": 60,
+    "thickness": 0.2
+  },
+  "hand": {
+    "open": "hand_open.png",
+    "fist": "hand_fist.png",
+    "wrist": [
+      100,
+      200
+    ],
+    "knuckle": [
+      100,
+      110
+    ]
+  }
+}

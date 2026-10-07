@@ -3,7 +3,7 @@
 Teclas:
   q / ESC  sair
   c        mudar paleta de cores do avatar
-  y        mudar o estilo do avatar (cartoon / robô)
+  y        mudar o estilo do avatar (cartoon / robô / png)
   d        mostrar/esconder landmarks sobre a webcam
   w        mostrar/esconder a imagem da webcam
   h        alternar cabeça 3D (crânio, nuca, orelhas) / cabeça simples
@@ -67,6 +67,8 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--palette", type=int, default=0)
     ap.add_argument("--style", choices=[cls.name for cls in STYLES], default="cartoon",
                     help="estilo do avatar (também muda ao vivo com a tecla y)")
+    ap.add_argument("--png-avatar", default=None, metavar="PASTA",
+                    help="pasta do avatar PNG (com avatar.json); por defeito avatars/gato")
     # Streaming.
     ap.add_argument("--virtual-cam", action="store_true",
                     help="ligar logo a câmara virtual (precisa do OBS Studio instalado no Windows)")
@@ -175,6 +177,10 @@ def main() -> None:
 
     tracker = Tracker(pose_model=args.pose_model, backend=args.backend, hand_mesh=not args.no_hand_mesh)
     renderer = AvatarRenderer(args.palette, style=args.style)
+    if args.png_avatar:
+        for st in renderer.styles:
+            if st.name == "png":
+                st.load(args.png_avatar)
     renderer.background = background_color(args.background)
     background_name = args.background
     calibrator = Calibrator(CALIBRATION_FILE)
