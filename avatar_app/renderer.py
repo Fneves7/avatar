@@ -23,7 +23,9 @@ BROW_A = [70, 63, 105, 66, 107, 55, 65, 52, 53, 46]
 BROW_B = [300, 293, 334, 296, 336, 285, 295, 282, 283, 276]
 LIPS_OUTER = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185]
 LIPS_INNER = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191]
-LIPS_SEAM = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308]
+BLINK_CLOSE, BLINK_OPEN = 0.6, 0.35  # piscar calibrado: fecha acima de, reabre abaixo de
+
+LIPS_SEAM =[78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308]
 NOSE_TIP = 1
 NOSE_BRIDGE = [168, 6, 197, 195, 5, 4]
 NOSE_LOWER = [4, 45, 220, 115, 48, 64, 98, 97, 2, 326, 327, 294, 278, 344, 440, 275]
@@ -133,6 +135,7 @@ class AvatarRenderer:
         self.head_3d = True  # crânio/nuca/orelhas estimados em 3D (tecla h alterna)
         self._nose_side = 1.0
         self._geo = None  # HeadGeometry do frame atual
+        self._eyes_closed = [False, False]  # EYE_A, EYE_B (com histerese)
         self._bg_cache: dict = {}
 
     @property
@@ -164,6 +167,7 @@ class AvatarRenderer:
 
         sw = self._shoulder_width(s)
         self._geo = estimate_head(s.face, FACE_OVAL) if (s.face is not None and self.head_3d) else None
+        self._update_eyes_closed(s)
         arms_behind, arms_front = self._split_arms_by_depth(s, sw)
 
         for side in arms_behind:
@@ -464,13 +468,32 @@ class AvatarRenderer:
         Group().poly(ear.polygon).draw(img, p.skin, p.outline, ow)
         cv2.fillPoly(img, [ear.inner], tuple(int(c * 0.82) for c in p.skin), AA)
 
+    def _update_eyes_closed(self, s: BodyState) -> None:
+        """Olhos fechados pelo piscar calibrado. Sem calibração não se fecha nada: os valores
+        em bruto variam muito de pessoa para pessoa (óculos, formato dos olhos)."""
+        if not s.calibrated or not s.blendshapes:
+            self._eyes_closed = [False, False]
+            return
+        # EYE_A (landmark 33) é o olho direito da pessoa; EYE_B (263) o esquerdo.
+        for i, key in enumerate(("eyeBlinkRight", "eyeBlinkLeft")):
+            v = s.blendshapes.get(key, 0.0)
+            if self._eyes_closed[i]:
+                self._eyes_closed[i] = v > BLINK_OPEN
+            else:
+                self._eyes_closed[i] = v > BLINK_CLOSE
+
     def _draw_eyes(self, img, f, fw, ow):
         p = self.palette
         # Largura de cada olho (canto a canto): de perfil o olho de trás fica muito estreito.
         widths = [float(np.linalg.norm(f[c[0]] - f[c[8]])) for c in (EYE_A, EYE_B)]
-        for (contour, (ci, ri)), width in zip(((EYE_A, IRIS_A), (EYE_B, IRIS_B)), widths):
+        for i, ((contour, (ci, ri)), width) in enumerate(zip(((EYE_A, IRIS_A), (EYE_B, IRIS_B)), widths)):
             eye = f[contour]
             ec = eye.mean(axis=0)
+            if self._eyes_closed[i]:
+                # Olho fechado: só a curva da pálpebra inferior (canto a canto, por baixo).
+                lower = _poly(_scale_about(eye[:9], ec, 1.3))
+                cv2.polylines(img, [lower], False, p.outline, ow + 1, AA)
+                continue
             if width < 0.45 * max(widths):
                 # Olho de trás muito encolhido: só a linha da pálpebra superior.
                 upper = _poly(np.vstack([eye[8:], eye[:1]]))

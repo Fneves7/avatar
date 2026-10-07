@@ -3,3 +3,4 @@ __pycache__/
 models/
 screenshots/
 .venv/
+calibration.json

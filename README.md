@@ -56,6 +56,8 @@ Opções:
 | `c` | muda a paleta (Clássico, Neon, Floresta, Robô) |
 | `d` | mostra ou esconde os landmarks sobre a webcam |
 | `w` | mostra só o avatar ou o avatar ao lado da webcam |
+| `k` | calibra a pose neutra: olha em frente com a cara neutra durante ~2 s; fica guardada em `calibration.json` |
+| `Shift+K` | apaga a calibração |
 | `s` | liga ou desliga a suavização |
 | `p` | guarda uma captura em `screenshots/` |
 | `q` / `Esc` | sai |

@@ -6,6 +6,8 @@ Teclas:
   d        mostrar/esconder landmarks sobre a webcam
   w        mostrar/esconder a imagem da webcam
   h        alternar cabeça 3D (crânio, nuca, orelhas) / cabeça simples
+  k        calibrar a pose neutra (olhar em frente, cara neutra ~2 s)
+  K        apagar a calibração
   s        ligar/desligar suavização
   p        guardar captura de ecrã em screenshots/
 """
@@ -24,12 +26,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from avatar_app.calibration import Calibrator
 from avatar_app.debug_draw import draw_landmarks
 from avatar_app.hand_mesh import N_MEASURABLE
 from avatar_app.renderer import AvatarRenderer
 from avatar_app.tracker import BodyState, Tracker
 
 WINDOW = "Avatar MediaPipe"
+CALIBRATION_FILE = Path(__file__).resolve().parent / "calibration.json"
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,12 +63,14 @@ def open_camera(index: int, width: int, height: int) -> cv2.VideoCapture:
     return cap
 
 
-def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool) -> None:
+def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool,
+             calib_status: str | None = None) -> None:
     def status(label, ok):
         return f"{label}:{'OK' if ok else '--'}"
 
     lines = [
-        f"FPS {fps:4.1f}   suavizacao {'ON' if smoothing else 'OFF'}",
+        f"FPS {fps:4.1f}   suavizacao {'ON' if smoothing else 'OFF'}   "
+        f"{'calibrado' if s.calibrated else 'sem calibracao [k]'}",
         "  ".join([status("rosto", s.face is not None), status("corpo", s.pose is not None),
                    status("maos", len(s.hands))]).replace("maos:OK", f"maos:{len(s.hands)}"),
     ]
@@ -80,13 +86,21 @@ def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool) -> None
         blink = (bs.get("eyeBlinkLeft", 0) + bs.get("eyeBlinkRight", 0)) / 2
         smile = (bs.get("mouthSmileLeft", 0) + bs.get("mouthSmileRight", 0)) / 2
         lines.append(f"boca {bs.get('jawOpen', 0):.2f}  sorriso {smile:.2f}  piscar {blink:.2f}")
-    lines.append("[c] cores [d] landmarks [w] webcam [h] cabeca 3D [s] suavizar [p] print [q] sair")
+    lines.append("[c] cores [d] landmarks [w] webcam [h] cabeca 3D [k] calibrar [s] suavizar [p] print [q] sair")
 
     y = 24
     for text in lines:
         cv2.putText(img, text, (11, y + 1), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3, cv2.LINE_AA)
         cv2.putText(img, text, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
         y += 22
+
+    if calib_status:
+        # Mensagem de calibração em destaque, ao centro em baixo.
+        font, scale, thick = cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2
+        (tw, th), _ = cv2.getTextSize(calib_status, font, scale, thick)
+        x, yb = (img.shape[1] - tw) // 2, img.shape[0] - 40
+        cv2.rectangle(img, (x - 14, yb - th - 14), (x + tw + 14, yb + 14), (0, 0, 0), -1)
+        cv2.putText(img, calib_status, (x, yb), font, scale, (0, 230, 255), thick, cv2.LINE_AA)
 
 
 def main() -> None:
@@ -97,6 +111,7 @@ def main() -> None:
 
     tracker = Tracker(pose_model=args.pose_model, backend=args.backend, hand_mesh=not args.no_hand_mesh)
     renderer = AvatarRenderer(args.palette)
+    calibrator = Calibrator(CALIBRATION_FILE)
     show_landmarks, show_webcam = True, True
     fps, last = 0.0, time.perf_counter()
 
@@ -111,6 +126,7 @@ def main() -> None:
                 frame = cv2.flip(frame, 1)
 
             state = tracker.process(frame)
+            calibrator.process(state)  # recolhe a pose neutra ou aplica a calibração
             avatar = renderer.render(state)
 
             now = time.perf_counter()
@@ -123,7 +139,7 @@ def main() -> None:
                 view = np.hstack([frame, avatar])
             else:
                 view = avatar
-            draw_hud(view, state, fps, tracker.smoothing)
+            draw_hud(view, state, fps, tracker.smoothing, calibrator.status())
             cv2.imshow(WINDOW, view)
 
             key = cv2.waitKey(1) & 0xFF
@@ -137,6 +153,10 @@ def main() -> None:
                 show_webcam = not show_webcam
             elif key == ord("h"):
                 renderer.head_3d = not renderer.head_3d
+            elif key == ord("k"):
+                calibrator.start()
+            elif key == ord("K"):
+                calibrator.reset()
             elif key == ord("s"):
                 tracker.smoothing = not tracker.smoothing
             elif key == ord("p"):

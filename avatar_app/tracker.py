@@ -43,6 +43,7 @@ class BodyState:
     pose_visibility: np.ndarray | None = None   # (33,)
     hands: dict[int, np.ndarray] = field(default_factory=dict)  # chave = índice do pulso na pose (15/16)
     hand_meshes: dict[int, HandMesh] = field(default_factory=dict)  # contorno dos dedos por mão
+    calibrated: bool = False  # head_angles/blendshapes já relativos à pose neutra
 
     def visible(self, idx: int, thr: float = 0.5) -> bool:
         return self.pose is not None and self.pose_visibility is not None and self.pose_visibility[idx] >= thr
