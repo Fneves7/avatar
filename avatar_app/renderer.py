@@ -10,6 +10,7 @@ import numpy as np
 
 from .eyes import EyeLife
 from .idle import IdleAnimator
+from .secondary import SecondaryMotion
 from .transitions import Fade
 from .hand_mesh import HandMesh
 from .head import NECK_TOP, Ear, estimate_head
@@ -161,6 +162,8 @@ class AvatarRenderer:
         self.transitions = True     # mãos/cara entram e saem aos poucos (tecla t)
         self.idle_enabled = True    # respiração quando parado (tecla i)
         self.idle = IdleAnimator()
+        self.secondary_enabled = True  # cabelo e mangas seguem com atraso (tecla m)
+        self.secondary = SecondaryMotion()
         self._hand_fades = {L_WRIST: Fade(), R_WRIST: Fade()}
         self._face_fade = Fade()
         self._hands_drawn: set[int] = set()
@@ -205,6 +208,11 @@ class AvatarRenderer:
             s = self.idle.apply(s, now)
         else:
             self.idle.weight = 0.0
+        # Movimento secundário: molas do cabelo e das mangas.
+        if self.secondary_enabled:
+            self.secondary.update(s, now)
+        else:
+            self.secondary.clear()
 
         # Transições: opacidade de cada mão e da cara (e o último valor visto, para desvanecer).
         for side, fade in self._hand_fades.items():
@@ -383,11 +391,13 @@ class AvatarRenderer:
         sh, el = s.pose[shoulder_i, :2], s.pose[elbow_i, :2]
         wr = hand[0, :2] if hand is not None else s.pose[side, :2]
 
-        Group().line(sh, el, 0.28 * sw).circle(el, 0.13 * sw).draw(img, p.shirt, p.outline, ow)
+        # Bainha da manga: segue o cotovelo com atraso (movimento secundário).
+        cuff = el + self.secondary.sleeve_offset.get(side, 0.0) if self.secondary_enabled else el
+        Group().line(sh, el, 0.28 * sw).circle(cuff, 0.13 * sw).draw(img, p.shirt, p.outline, ow)
         if hand is not None or s.visible(side, 0.25):
             Group().line(el, wr, 0.2 * sw).circle(el, 0.1 * sw).draw(img, p.skin, p.outline, ow)
             # Punho da manga por cima do cotovelo.
-            Group().circle(el, 0.13 * sw).draw(img, p.shirt, p.outline, ow)
+            Group().circle(cuff, 0.13 * sw).draw(img, p.shirt, p.outline, ow)
             cv2.line(img, _ip(sh), _ip(el), p.shirt, max(1, int(0.28 * sw)), AA)
             # Luva da pose: sem mão, ou por baixo da mão enquanto esta ainda está a aparecer.
             if (hand is None or self._hand_fades[side].alpha < 1.0) and s.visible(side, 0.5):
@@ -475,7 +485,7 @@ class AvatarRenderer:
             for ear in geo.ears:
                 if ear.hidden:
                     self._draw_ear(img, ear, ow)
-            Group().poly(geo.skull).draw(img, p.hair, p.outline, ow)
+            Group().poly(self._hair_warp(geo.skull, center, up, fw)).draw(img, p.hair, p.outline, ow)
             for ear in geo.ears:
                 if not ear.hidden:
                     self._draw_ear(img, ear, ow)
@@ -498,7 +508,7 @@ class AvatarRenderer:
                        for px, py in hairline]
             hair = self._hair_crescent(hairline[on_edge], center, up, fw, outer_k=1.0)
             if hair is not None:
-                outer, fringe = hair
+                outer, fringe = hair  # a franja fica presa à testa (sem movimento secundário)
                 cv2.fillPoly(img, [_poly(np.vstack([outer, fringe[::-1]]))], p.hair, AA)
                 cv2.polylines(img, [_poly(fringe)], False, p.outline, ow, AA)
             self._draw_features(img, f, fw, ow, s.blendshapes)
@@ -520,7 +530,9 @@ class AvatarRenderer:
             hair = self._hair_crescent(head, center, up, fw, outer_k=1.14)
             if hair is not None:
                 outer, fringe = hair
-                Group().poly(np.vstack([outer + up * 0.04 * fw, fringe[::-1]])).draw(img, p.hair, p.outline, ow)
+                # Só a silhueta exterior do cabelo balança; a franja fica presa à testa.
+                outer = self._hair_warp(outer + up * 0.04 * fw, center, up, fw)
+                Group().poly(np.vstack([outer, fringe[::-1]])).draw(img, p.hair, p.outline, ow)
         self._draw_features(img, f, fw, ow, s.blendshapes)
 
     def _exaggerate(self, f: np.ndarray, fw: float, bs: dict[str, float]) -> np.ndarray:
@@ -587,6 +599,20 @@ class AvatarRenderer:
         self._draw_nose(img, f, fw, ow)
         self._draw_mouth(img, f, fw, ow)
         self._draw_blush(img, f, fw, blendshapes)
+
+    def _hair_warp(self, pts: np.ndarray, center: np.ndarray, up: np.ndarray, fw: float) -> np.ndarray:
+        """Movimento secundário do cabelo: desvio e inclinação da mola, mais fortes no topo
+        do cabelo e quase nulos à altura do centro da cara (para não abrir buracos)."""
+        sec = self.secondary
+        if not self.secondary_enabled or (not sec.hair_offset.any() and sec.hair_rot == 0.0):
+            return pts
+        pts = np.asarray(pts, dtype=np.float64)
+        rel = pts - center
+        w = np.clip((rel @ up) / (0.9 * fw), 0.0, 1.0)[:, None]
+        ang = sec.hair_rot * w
+        c, s = np.cos(ang), np.sin(ang)
+        rotated = np.hstack([rel[:, :1] * c - rel[:, 1:] * s, rel[:, :1] * s + rel[:, 1:] * c])
+        return center + rotated + sec.hair_offset * w
 
     @staticmethod
     def _hair_crescent(head, center, up, fw, outer_k: float):

@@ -63,6 +63,7 @@ Opções:
 | `l` | liga ou desliga o olhar vivo (piscar automático e micro-movimentos dos olhos) |
 | `t` | liga ou desliga as transições suaves (as mãos e a cara entram e saem aos poucos) |
 | `i` | liga ou desliga o idle (respiração subtil quando estás parado) |
+| `m` | liga ou desliga o movimento secundário (o cabelo e as mangas seguem com atraso) |
 | `s` | liga ou desliga a suavização |
 | `v` | liga ou desliga a câmara virtual |
 | `b` | muda o fundo do avatar (gradiente, verde, azul ou magenta) |
@@ -108,6 +109,7 @@ avatar_app/
   eyes.py                olhar vivo: piscar automático e micro-movimentos da íris
   transitions.py         transições suaves (fade-in/fade-out) das mãos e da cara
   idle.py                idle: respiração subtil quando a pessoa está parada
+  secondary.py           movimento secundário: molas do cabelo e das mangas
   renderer.py            desenha o avatar (cabeça, pescoço, tronco, braços, mãos e dedos)
   debug_draw.py          desenha os landmarks sobre a webcam
 ```

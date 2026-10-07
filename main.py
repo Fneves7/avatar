@@ -12,6 +12,7 @@ Teclas:
   l        ligar/desligar o olhar vivo (piscar automático + micro-movimentos dos olhos)
   t        ligar/desligar as transições suaves (mãos e cara entram/saem aos poucos)
   i        ligar/desligar o idle (respiração subtil quando estás parado)
+  m        ligar/desligar o movimento secundário (cabelo e mangas seguem com atraso)
   + / -    aumentar/diminuir a intensidade do exagero
   s        ligar/desligar suavização
   v        ligar/desligar a câmara virtual (avatar como webcam no OBS/Teams/Zoom/Discord)
@@ -101,7 +102,8 @@ def open_camera(index: int, width: int, height: int) -> cv2.VideoCapture:
 def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool,
              calib_status: str | None = None, exaggeration: float | None = None,
              stream_status: str | None = None, detect_fps: float | None = None,
-             lively: bool = True, transitions: bool = True, idle: float | None = 0.0) -> None:
+             lively: bool = True, transitions: bool = True, idle: float | None = 0.0,
+             secondary: bool = True) -> None:
     def status(label, ok):
         return f"{label}:{'OK' if ok else '--'}"
 
@@ -130,7 +132,7 @@ def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool,
         lines.append(f"exagero {'x%.2f' % exaggeration if exaggeration else 'OFF'}  [e] ligar/desligar  [+/-] intensidade")
     idle_text = "OFF" if idle is None else (f"a respirar {idle:.0%}" if idle > 0 else "ON")
     lines.append(f"olhar vivo {'ON' if lively else 'OFF'} [l]   transicoes {'ON' if transitions else 'OFF'} [t]"
-                 f"   idle {idle_text} [i]")
+                 f"   idle {idle_text} [i]   mov. secundario {'ON' if secondary else 'OFF'} [m]")
     if stream_status:
         lines.append(stream_status)
     lines.append("[c] cores [d] landmarks [w] webcam [h] cabeca 3D [k] calibrar [s] suavizar [p] print [q] sair")
@@ -234,7 +236,7 @@ def main() -> None:
             draw_hud(view, state, fps, tracker.smoothing, calibrator.status(),
                      renderer.exaggeration if renderer.exaggerate else None, stream_status, worker.fps,
                      renderer.lively_eyes, renderer.transitions,
-                     renderer.idle.weight if renderer.idle_enabled else None)
+                     renderer.idle.weight if renderer.idle_enabled else None, renderer.secondary_enabled)
             cv2.imshow(WINDOW, view)
 
             # Ritmo fixo: espera o que falta para completar o período do frame.
@@ -254,6 +256,8 @@ def main() -> None:
                 calibrator.start()
             elif key == ord("K"):
                 calibrator.reset()
+            elif key == ord("m"):
+                renderer.secondary_enabled = not renderer.secondary_enabled
             elif key == ord("i"):
                 renderer.idle_enabled = not renderer.idle_enabled
             elif key == ord("t"):
