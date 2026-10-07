@@ -1,0 +1,4 @@
+# Python 3.9-3.12. A versão 0.10.21 inclui os modelos (Holistic) dentro do pacote,
+# por isso não precisa de descarregar nada de storage.googleapis.com.
+# Já traz opencv-contrib-python e numpy<2 como dependências.
+mediapipe==0.10.21
