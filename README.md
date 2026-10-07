@@ -62,7 +62,7 @@ Opções:
 | `e` | liga ou desliga as expressões exageradas (só com calibração) |
 | `+` / `-` | aumenta ou diminui a intensidade do exagero |
 | `l` | liga ou desliga o olhar vivo (piscar automático e micro-movimentos dos olhos) |
-| `t` | liga ou desliga as transições suaves (as mãos e a cara entram e saem aos poucos) |
+| `t` | liga ou desliga as transições suaves (as mãos, a cara e o corpo entram e saem aos poucos) |
 | `i` | liga ou desliga o idle (respiração subtil quando estás parado) |
 | `m` | liga ou desliga o movimento secundário (o cabelo e as mangas seguem com atraso) |
 | `s` | liga ou desliga a suavização |
@@ -140,7 +140,7 @@ avatar_app/
   browser_source.py      fundo transparente: página local para a Fonte de Browser do OBS
   pipeline.py            thread de deteção + interpolação para desenhar a ritmo fixo
   eyes.py                olhar vivo: piscar automático e micro-movimentos da íris
-  transitions.py         transições suaves (fade-in/fade-out) das mãos e da cara
+  transitions.py         transições suaves (fade-in/fade-out) das mãos, da cara e do corpo
   idle.py                idle: respiração subtil quando a pessoa está parada
   secondary.py           movimento secundário: molas do cabelo e das mangas
   constraints.py         limites anatómicos da pose (cotovelos, saltos, braços, ancas)

@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import dataclasses
 import time
 
 import cv2
@@ -90,8 +91,29 @@ class AvatarRenderer:
         """t: instante (s) para as animações (olhos, transições, ...); por defeito o relógio atual."""
         img = self._background(s.width, s.height)
         frame, rig = self._animate(s, t)
-        self.style.draw(img, frame, rig, self.palette)
+        self._draw(img, frame, rig)
         return img
+
+    def _draw(self, img: np.ndarray, frame, rig) -> None:
+        """Desenha o estilo; enquanto o corpo entra ou sai (transições), mistura o desenho com e
+        sem a pose, para o tronco e os braços desvanecerem em vez de cortar. Funciona com todos
+        os estilos e é linear, por isso a transparência de render_with_alpha continua exata."""
+        fade, s = frame.pose_fade, frame.state
+        if fade is None or fade.alpha >= 1.0 or (s.pose is None and not fade.visible):
+            self.style.draw(img, frame, rig, self.palette)
+            return
+        if s.pose is None:  # a desaparecer: o corpo é a última pose vista
+            pose, vis = fade.data
+            body = dataclasses.replace(frame, state=dataclasses.replace(s, pose=pose, pose_visibility=vis))
+            bare, bare_rig, body_rig = frame, rig, build_rig(body)
+        else:  # a aparecer
+            body, body_rig = frame, rig
+            bare = dataclasses.replace(frame, state=dataclasses.replace(s, pose=None, pose_visibility=None))
+            bare_rig = build_rig(bare)
+        layer = img.copy()
+        self.style.draw(img, bare, bare_rig, self.palette)
+        self.style.draw(layer, body, body_rig, self.palette)
+        cv2.addWeighted(layer, fade.alpha, img, 1.0 - fade.alpha, 0, dst=img)
 
     def render_with_alpha(self, s: BodyState, t: float | None = None) -> tuple[np.ndarray, np.ndarray]:
         """Como render(), mas devolve também o avatar com transparência (BGRA).
@@ -102,8 +124,8 @@ class AvatarRenderer:
         frame, rig = self._animate(s, t)
         black = np.zeros((s.height, s.width, 3), np.uint8)
         white = np.full((s.height, s.width, 3), 255, np.uint8)
-        self.style.draw(black, frame, rig, self.palette)
-        self.style.draw(white, frame, rig, self.palette)
+        self._draw(black, frame, rig)
+        self._draw(white, frame, rig)
         img = self._background(s.width, s.height)
         bgra = np.zeros((s.height, s.width, 4), np.uint8)
         # Só a zona onde há avatar (no resto: transparente / fundo). Os estilos nunca usam preto

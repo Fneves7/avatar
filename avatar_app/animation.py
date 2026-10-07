@@ -3,7 +3,7 @@
 Junta, frame a frame, tudo o que não depende de como o avatar é desenhado:
 olhos fechados pelo piscar calibrado (com histerese), olhar vivo (piscar automático e
 micro-movimentos), idle (respiração), movimento secundário (molas do cabelo e das mangas)
-e transições (fade-in/fade-out das mãos e da cara). O resultado é um AnimFrame.
+e transições (fade-in/fade-out das mãos, da cara e do corpo). O resultado é um AnimFrame.
 """
 from __future__ import annotations
 
@@ -32,6 +32,7 @@ class AnimFrame:
     sleeve_offset: dict[int, np.ndarray] = field(default_factory=dict)
     hand_fades: dict[int, Fade] = field(default_factory=dict)
     face_fade: Fade | None = None
+    pose_fade: Fade | None = None          # corpo (tronco e braços): (pose, visibilidade)
     idle_weight: float = 0.0
     breath: float = 0.0                    # respiração atual (0..1, já multiplicada pelo idle)
 
@@ -40,13 +41,14 @@ class Animator:
     def __init__(self):
         self.lively_eyes = True     # piscar automático + micro-movimentos (tecla l)
         self.eye_life = EyeLife()
-        self.transitions = True     # mãos/cara entram e saem aos poucos (tecla t)
+        self.transitions = True     # mãos/cara/corpo entram e saem aos poucos (tecla t)
         self.idle_enabled = True    # respiração quando parado (tecla i)
         self.idle = IdleAnimator()
         self.secondary_enabled = True  # cabelo e mangas seguem com atraso (tecla m)
         self.secondary = SecondaryMotion()
         self.hand_fades = {L_WRIST: Fade(), R_WRIST: Fade()}
         self.face_fade = Fade()
+        self.pose_fade = Fade(start_visible=True)
         self._eyes_closed = [False, False]
 
     def update(self, s: BodyState, now: float) -> AnimFrame:
@@ -60,11 +62,12 @@ class Animator:
             self.secondary.update(s, now)
         else:
             self.secondary.clear()
-        # Transições: opacidade de cada mão e da cara (e o último valor visto, para desvanecer).
+        # Transições: opacidade de cada mão, da cara e do corpo (e o último valor visto, para desvanecer).
         for side, fade in self.hand_fades.items():
             hand = s.hands.get(side)
             fade.update(now, None if hand is None else (hand, s.hand_meshes.get(side)), self.transitions)
         self.face_fade.update(now, None if s.face is None else (s.face, s.blendshapes), self.transitions)
+        self.pose_fade.update(now, None if s.pose is None else (s.pose, s.pose_visibility), self.transitions)
         # Olhos fechados pelo piscar real e olhar vivo.
         self._update_eyes_closed(s)
         if self.lively_eyes:
@@ -75,7 +78,7 @@ class Animator:
         return AnimFrame(
             state=s, t=now, eyes_closed=list(self._eyes_closed), auto_blink=auto_blink, saccade=saccade,
             hair_offset=sec.hair_offset, hair_rot=sec.hair_rot, sleeve_offset=dict(sec.sleeve_offset),
-            hand_fades=self.hand_fades, face_fade=self.face_fade, idle_weight=self.idle.weight,
+            hand_fades=self.hand_fades, face_fade=self.face_fade, pose_fade=self.pose_fade, idle_weight=self.idle.weight,
             breath=self.idle.weight * breath(now / BREATH_PERIOD))
 
     def _update_eyes_closed(self, s: BodyState) -> None:

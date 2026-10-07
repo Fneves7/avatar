@@ -11,7 +11,7 @@ Teclas:
   K        apagar a calibração
   e        ligar/desligar expressões exageradas (precisa de calibração)
   l        ligar/desligar o olhar vivo (piscar automático + micro-movimentos dos olhos)
-  t        ligar/desligar as transições suaves (mãos e cara entram/saem aos poucos)
+  t        ligar/desligar as transições suaves (mãos, cara e corpo entram/saem aos poucos)
   i        ligar/desligar o idle (respiração subtil quando estás parado)
   m        ligar/desligar o movimento secundário (cabelo e mangas seguem com atraso)
   + / -    aumentar/diminuir a intensidade do exagero
