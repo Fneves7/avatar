@@ -58,6 +58,8 @@ Opções:
 | `w` | mostra só o avatar ou o avatar ao lado da webcam |
 | `k` | calibra a pose neutra: olha em frente com a cara neutra durante ~2 s; fica guardada em `calibration.json` |
 | `Shift+K` | apaga a calibração |
+| `e` | liga ou desliga as expressões exageradas (só com calibração) |
+| `+` / `-` | aumenta ou diminui a intensidade do exagero |
 | `s` | liga ou desliga a suavização |
 | `p` | guarda uma captura em `screenshots/` |
 | `q` / `Esc` | sai |

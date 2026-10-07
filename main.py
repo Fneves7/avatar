@@ -8,6 +8,8 @@ Teclas:
   h        alternar cabeça 3D (crânio, nuca, orelhas) / cabeça simples
   k        calibrar a pose neutra (olhar em frente, cara neutra ~2 s)
   K        apagar a calibração
+  e        ligar/desligar expressões exageradas (precisa de calibração)
+  + / -    aumentar/diminuir a intensidade do exagero
   s        ligar/desligar suavização
   p        guardar captura de ecrã em screenshots/
 """
@@ -64,7 +66,7 @@ def open_camera(index: int, width: int, height: int) -> cv2.VideoCapture:
 
 
 def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool,
-             calib_status: str | None = None) -> None:
+             calib_status: str | None = None, exaggeration: float | None = None) -> None:
     def status(label, ok):
         return f"{label}:{'OK' if ok else '--'}"
 
@@ -85,7 +87,11 @@ def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool,
     if bs:
         blink = (bs.get("eyeBlinkLeft", 0) + bs.get("eyeBlinkRight", 0)) / 2
         smile = (bs.get("mouthSmileLeft", 0) + bs.get("mouthSmileRight", 0)) / 2
-        lines.append(f"boca {bs.get('jawOpen', 0):.2f}  sorriso {smile:.2f}  piscar {blink:.2f}")
+        brow = bs.get("browInnerUp", 0) - (bs.get("browDownLeft", 0) + bs.get("browDownRight", 0)) / 2
+        lines.append(f"boca {bs.get('jawOpen', 0):.2f}  sorriso {smile:.2f}  piscar {blink:.2f}"
+                     f"  sobrancelhas {brow:+.2f}")
+    if s.calibrated:
+        lines.append(f"exagero {'x%.2f' % exaggeration if exaggeration else 'OFF'}  [e] ligar/desligar  [+/-] intensidade")
     lines.append("[c] cores [d] landmarks [w] webcam [h] cabeca 3D [k] calibrar [s] suavizar [p] print [q] sair")
 
     y = 24
@@ -139,7 +145,8 @@ def main() -> None:
                 view = np.hstack([frame, avatar])
             else:
                 view = avatar
-            draw_hud(view, state, fps, tracker.smoothing, calibrator.status())
+            draw_hud(view, state, fps, tracker.smoothing, calibrator.status(),
+                     renderer.exaggeration if renderer.exaggerate else None)
             cv2.imshow(WINDOW, view)
 
             key = cv2.waitKey(1) & 0xFF
@@ -157,6 +164,12 @@ def main() -> None:
                 calibrator.start()
             elif key == ord("K"):
                 calibrator.reset()
+            elif key == ord("e"):
+                renderer.exaggerate = not renderer.exaggerate
+            elif key in (ord("+"), ord("=")):
+                renderer.exaggeration = min(2.5, renderer.exaggeration + 0.25)
+            elif key == ord("-"):
+                renderer.exaggeration = max(0.25, renderer.exaggeration - 0.25)
             elif key == ord("s"):
                 tracker.smoothing = not tracker.smoothing
             elif key == ord("p"):

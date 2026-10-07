@@ -108,13 +108,22 @@ def _geometry_expressions(f: np.ndarray) -> tuple[dict[str, float], np.ndarray]:
     rot = np.array([[c, -s], [s, c]])
     lip_mid = rot @ ((f[13, :2] + f[14, :2]) / 2)
     corners = (rot @ f[61, :2] + rot @ f[291, :2]) / 2
-    smile = float(np.clip((lip_mid[1] - corners[1]) / fw / 0.05, 0, 1))
+    # Sorriso = cantos a subir + boca a alargar. Escalas centradas de forma a que a cara
+    # neutra fique a meio (a calibração remove depois o valor de repouso de cada pessoa).
+    lift = np.clip(((lip_mid[1] - corners[1]) / fw + 0.03) / 0.08, 0, 1)
+    widen = np.clip((np.linalg.norm(f[61, :2] - f[291, :2]) / fw - 0.30) / 0.25, 0, 1)
+    smile = float(0.5 * lift + 0.5 * widen)
     jaw = float(np.clip(np.linalg.norm(f[13, :2] - f[14, :2]) / fh / 0.25, 0, 1))
+    # Sobrancelhas: distância sobrancelha-pálpebra superior relativa à altura da cara.
+    brow = (np.linalg.norm(f[105, :2] - f[159, :2]) + np.linalg.norm(f[334, :2] - f[386, :2])) / 2 / fh
+    brow_up = float(np.clip((brow - 0.06) / 0.10, 0, 1))
+    brow_down = float(np.clip((0.16 - brow) / 0.10, 0, 1))
 
     bs = {
         "eyeBlinkLeft": blink(eye_open(386, 374, 263, 362)),
         "eyeBlinkRight": blink(eye_open(159, 145, 33, 133)),
         "mouthSmileLeft": smile, "mouthSmileRight": smile, "jawOpen": jaw,
+        "browInnerUp": brow_up, "browDownLeft": brow_down, "browDownRight": brow_down,
     }
     # Yaw e pitch pela profundidade (z) da malha: lado-a-lado da cara e testa-queixo.
     side = f[454] - f[234]

@@ -18,7 +18,10 @@ import numpy as np
 
 from .tracker import BodyState
 
-CALIBRATED_KEYS = ("eyeBlinkLeft", "eyeBlinkRight", "mouthSmileLeft", "mouthSmileRight", "jawOpen")
+CALIBRATED_KEYS = ("eyeBlinkLeft", "eyeBlinkRight", "mouthSmileLeft", "mouthSmileRight", "jawOpen",
+                   "browInnerUp", "browDownLeft", "browDownRight")
+# Olhos mais abertos que o neutro = "arregalar" (derivado do piscar, abaixo do repouso).
+WIDE_FROM_BLINK = {"eyeWideLeft": "eyeBlinkLeft", "eyeWideRight": "eyeBlinkRight"}
 WARMUP_S = 0.7       # tempo para a pessoa se pôr em posição depois de carregar na tecla
 DURATION_S = 2.0     # tempo de recolha da pose neutra
 MIN_SAMPLES = 10
@@ -34,13 +37,28 @@ class Calibration:
         if s.head_angles is not None:
             s.head_angles = tuple(a - n for a, n in zip(s.head_angles, self.head))
         if s.blendshapes:
-            bs = dict(s.blendshapes)
-            for k, b in self.base.items():
-                if k in bs:
-                    # Repouso -> 0, máximo -> 1.
-                    bs[k] = float(np.clip((bs[k] - b) / max(1.0 - b, 0.05), 0.0, 1.0))
+            raw = s.blendshapes
+            bs = dict(raw)
+            for k in CALIBRATED_KEYS:
+                if k not in bs:
+                    continue
+                if k not in self.base:
+                    bs[k] = 0.0  # calibração antiga sem esta chave: fica neutra até recalibrar
+                    continue
+                # Repouso -> 0, máximo -> 1.
+                b = self.base[k]
+                bs[k] = float(np.clip((raw[k] - b) / max(1.0 - b, 0.05), 0.0, 1.0))
+            for wide, blink in WIDE_FROM_BLINK.items():
+                if blink in raw and blink in self.base and wide not in raw:
+                    b = self.base[blink]
+                    bs[wide] = float(np.clip((b - raw[blink]) / max(b, 0.05), 0.0, 1.0))
             s.blendshapes = bs
         s.calibrated = True
+
+    @property
+    def outdated(self) -> bool:
+        """Calibração feita antes de existirem algumas expressões (ex.: sobrancelhas)."""
+        return any(k not in self.base for k in CALIBRATED_KEYS)
 
     def to_dict(self) -> dict:
         return {"head": list(self.head), "base": self.base}
@@ -124,4 +142,6 @@ class Calibrator:
             return f"CALIBRAR: nao te mexas... {pct}%"
         if self._message and time.monotonic() - self._message[1] < MESSAGE_S:
             return self._message[0]
+        if self.calibration is not None and self.calibration.outdated:
+            return "calibracao antiga: carrega em [k] para ativar todas as expressoes"
         return None

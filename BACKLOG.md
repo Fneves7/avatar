@@ -5,10 +5,11 @@ Objetivo do projeto: avatar em tempo real para **streaming**.
 ## Feito
 
 - [x] **Calibração da pose neutra** (tecla `k`, `Shift+K` apaga): a cabeça e as expressões passam a ser relativas à cara de cada pessoa. É guardada em `calibration.json`.
+- [x] **Expressões exageradas** (tecla `e`, intensidade com `+` e `-`; precisa de calibração): arregalar e semicerrar os olhos, sobrancelhas a subir e a franzir, sorriso curvado, boca aberta mais marcada. Os ganhos estão no topo do `renderer.py`. Falta afiná-los com a webcam real.
 
 ## Próximo
 
-- [ ] **Expressões exageradas** (usa a calibração): olhos mais expressivos, sobrancelhas a subir mais, boca em "D" ao sorrir, boca aberta mais marcada.
+- [ ] Escolher o próximo item das listas abaixo.
 
 ## Animação
 

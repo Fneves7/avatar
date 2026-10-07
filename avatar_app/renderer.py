@@ -25,7 +25,19 @@ LIPS_OUTER = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 
 LIPS_INNER = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191]
 BLINK_CLOSE, BLINK_OPEN = 0.6, 0.35  # piscar calibrado: fecha acima de, reabre abaixo de
 
+# Ganhos do exagero das expressões (multiplicados pela intensidade, tecla +/-).
+EYE_WIDE_GAIN = 0.7       # abertura extra dos olhos ao arregalar
+EYE_SQUINT_GAIN = 0.9     # fecho extra ao semicerrar (antes de fechar de todo)
+BROW_RAISE_GAIN = 0.04    # subida das sobrancelhas (* altura da cara); mais que isto entra na franja
+BROW_FROWN_GAIN = 0.06    # descida das pontas interiores ao franzir (* altura da cara)
+SMILE_LIFT_GAIN = 0.08    # subida dos cantos da boca (* altura da cara)
+SMILE_SIGMA = 0.18        # alcance da deformação à volta de cada canto (* largura da boca)
+SMILE_WIDEN_GAIN = 0.15   # alargamento da boca (* largura da boca)
+JAW_GAIN = 0.07           # descida extra do lábio inferior (* altura da cara)
+
 LIPS_SEAM =[78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308]
+LOWER_LIP = [146, 91, 181, 84, 17, 314, 405, 321, 375, 95, 88, 178, 87, 14, 317, 402, 318, 324]
+MOUTH_PTS = sorted(set(LIPS_OUTER + LIPS_INNER + LIPS_SEAM))
 NOSE_TIP = 1
 NOSE_BRIDGE = [168, 6, 197, 195, 5, 4]
 NOSE_LOWER = [4, 45, 220, 115, 48, 64, 98, 97, 2, 326, 327, 294, 278, 344, 440, 275]
@@ -136,6 +148,9 @@ class AvatarRenderer:
         self._nose_side = 1.0
         self._geo = None  # HeadGeometry do frame atual
         self._eyes_closed = [False, False]  # EYE_A, EYE_B (com histerese)
+        self.exaggerate = True      # expressões exageradas (tecla e); só com calibração
+        self.exaggeration = 1.0     # intensidade (teclas + e -)
+        self._calibrated = False
         self._bg_cache: dict = {}
 
     @property
@@ -168,6 +183,7 @@ class AvatarRenderer:
         sw = self._shoulder_width(s)
         self._geo = estimate_head(s.face, FACE_OVAL) if (s.face is not None and self.head_3d) else None
         self._update_eyes_closed(s)
+        self._calibrated = s.calibrated
         arms_behind, arms_front = self._split_arms_by_depth(s, sw)
 
         for side in arms_behind:
@@ -440,7 +456,65 @@ class AvatarRenderer:
                 Group().poly(np.vstack([outer + up * 0.04 * fw, fringe[::-1]])).draw(img, p.hair, p.outline, ow)
         self._draw_features(img, f, fw, ow, s.blendshapes)
 
+    def _exaggerate(self, f: np.ndarray, fw: float, bs: dict[str, float]) -> np.ndarray:
+        """Deforma olhos, sobrancelhas e boca a partir das expressões calibradas (estilo cartoon).
+
+        Só mexe nos pontos usados para desenhar as feições; o contorno da cara fica igual."""
+        k = self.exaggeration
+        f0 = f
+        f = f.copy()
+        up = f0[FOREHEAD] - f0[CHIN]
+        fh = float(np.linalg.norm(up)) or 1.0
+        up = up / fh
+        across = f0[FACE_RIGHT] - f0[FACE_LEFT]
+        across = across / (np.linalg.norm(across) or 1.0)
+
+        # Olhos: abrir mais ao arregalar, fechar mais ao semicerrar (eixo perpendicular aos cantos).
+        for contour, blink_key, wide_key in ((EYE_A, "eyeBlinkRight", "eyeWideRight"),
+                                             (EYE_B, "eyeBlinkLeft", "eyeWideLeft")):
+            sv = 1.0 + k * (EYE_WIDE_GAIN * bs.get(wide_key, 0.0) - EYE_SQUINT_GAIN * bs.get(blink_key, 0.0))
+            sv = float(np.clip(sv, 0.25, 2.2))
+            pts = f0[contour]
+            c = pts.mean(axis=0)
+            u = pts[8] - pts[0]
+            u = u / (np.linalg.norm(u) or 1.0)
+            n = np.array([-u[1], u[0]])
+            rel = pts - c
+            f[contour] = c + np.outer(rel @ u, u) + np.outer((rel @ n) * sv, n)
+
+        # Sobrancelhas: sobem inteiras; ao franzir descem sobretudo as pontas interiores.
+        raise_ = bs.get("browInnerUp", 0.0)
+        down = (bs.get("browDownLeft", 0.0) + bs.get("browDownRight", 0.0)) / 2
+        mid = (f0[FACE_LEFT] + f0[FACE_RIGHT]) / 2
+        for brow in (BROW_A, BROW_B):
+            pts = f0[brow]
+            dist = np.abs((pts - mid) @ across)
+            inner = 1.0 - (dist - dist.min()) / max(dist.max() - dist.min(), 1e-6)
+            lift = k * (BROW_RAISE_GAIN * raise_ - BROW_FROWN_GAIN * down * inner) * fh
+            f[brow] = pts + np.outer(lift, up)
+
+        # Sorriso: cantos da boca sobem e abrem; os pontos vizinhos acompanham (peso gaussiano).
+        smile = (bs.get("mouthSmileLeft", 0.0) + bs.get("mouthSmileRight", 0.0)) / 2
+        if smile > 0:
+            mouth_c = (f0[61] + f0[291]) / 2
+            mw = float(np.linalg.norm(f0[61] - f0[291])) or 1.0
+            sigma2 = 2 * (SMILE_SIGMA * mw) ** 2  # só perto dos cantos: o centro fica, a boca curva
+            for corner in (61, 291):
+                out = f0[corner] - mouth_c
+                out = out / (np.linalg.norm(out) or 1.0)
+                disp = up * (k * SMILE_LIFT_GAIN * smile * fh) + out * (k * SMILE_WIDEN_GAIN * smile * mw)
+                w = np.exp(-np.sum((f0[MOUTH_PTS] - f0[corner]) ** 2, axis=1) / sigma2)
+                f[MOUTH_PTS] += np.outer(w, disp)
+
+        # Boca aberta: o lábio de baixo desce mais.
+        jaw = bs.get("jawOpen", 0.0)
+        if jaw > 0:
+            f[LOWER_LIP] -= up * (k * JAW_GAIN * jaw * fh)
+        return f
+
     def _draw_features(self, img, f, fw, ow, blendshapes):
+        if self.exaggerate and self._calibrated and blendshapes:
+            f = self._exaggerate(f, fw, blendshapes)
         self._draw_eyes(img, f, fw, ow)
         self._draw_brows(img, f, ow)
         self._draw_nose(img, f, fw, ow)
