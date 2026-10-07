@@ -15,6 +15,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
+from .hand_mesh import HandMesh, HandMeshEstimator
 from .smoothing import OneEuroFilter
 
 # Índices do PoseLandmarker usados pelo avatar.
@@ -41,6 +42,7 @@ class BodyState:
     pose: np.ndarray | None = None              # (33, 3)
     pose_visibility: np.ndarray | None = None   # (33,)
     hands: dict[int, np.ndarray] = field(default_factory=dict)  # chave = índice do pulso na pose (15/16)
+    hand_meshes: dict[int, HandMesh] = field(default_factory=dict)  # contorno dos dedos por mão
 
     def visible(self, idx: int, thr: float = 0.5) -> bool:
         return self.pose is not None and self.pose_visibility is not None and self.pose_visibility[idx] >= thr
@@ -233,7 +235,8 @@ class _TasksBackend:
 
 
 class Tracker:
-    def __init__(self, pose_model: str = "full", backend: str = "auto", smoothing: bool = True):
+    def __init__(self, pose_model: str = "full", backend: str = "auto", smoothing: bool = True,
+                 hand_mesh: bool = True):
         if backend == "auto":
             backend = "holistic" if HAS_HOLISTIC else "tasks"
         if backend == "holistic" and not HAS_HOLISTIC:
@@ -247,6 +250,7 @@ class Tracker:
         self._pose = _Part(min_cutoff=1.2, beta=0.04)
         self._hands = {L_WRIST: _Part(1.5, 0.06), R_WRIST: _Part(1.5, 0.06)}
         self._angles_filter = OneEuroFilter(1.0, 0.02)
+        self.hand_mesh = HandMeshEstimator() if hand_mesh else None
 
     def close(self) -> None:
         self.backend.close()
@@ -270,6 +274,12 @@ class Tracker:
             val = self._smooth(part, raw.hands.get(side), t)
             if val is not None:
                 state.hands[side] = val
+                if self.hand_mesh is not None:
+                    # Mede com os pontos em bruto (alinhados com o frame), desenha com os suavizados.
+                    state.hand_meshes[side] = self.hand_mesh.estimate(
+                        frame_bgr, raw.hands.get(side), val, side)
+            elif self.hand_mesh is not None:
+                self.hand_mesh.reset(side)
         return state
 
     def _smooth(self, part: _Part, pts: np.ndarray | None, t: float) -> np.ndarray | None:

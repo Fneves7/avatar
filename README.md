@@ -68,9 +68,22 @@ avatar_app/
   models.py              download e cache dos modelos
   tracker.py             motores holistic/tasks, associação mão↔pulso, suavização e retenção
   smoothing.py           filtro One Euro (reduz o tremor sem acrescentar atraso)
+  head.py                crânio, nuca e orelhas estimados em 3D a partir da malha da cara
+  hand_mesh.py           largura real dos dedos medida na imagem + malha/contorno da mão
   renderer.py            desenha o avatar (cabeça, pescoço, tronco, braços, mãos e dedos)
   debug_draw.py          desenha os landmarks sobre a webcam
 ```
+
+## Malha das mãos
+
+O MediaPipe só dá o esqueleto da mão (21 pontos). A espessura e o contorno de cada dedo são medidos na imagem, em [avatar_app/hand_mesh.py](avatar_app/hand_mesh.py):
+
+1. Em cada frame, aprende-se a cor da pele (Cr/Cb) na palma e ao longo dos ossos dos dedos.
+2. A pele é segmentada num "tubo" à volta do esqueleto, para não apanhar a cara nem o fundo.
+3. Em cada uma das 14 falanges, procura-se perpendicularmente ao osso onde a pele acaba.
+4. Com essas larguras, cada dedo ganha um contorno (bordas e ponta arredondada) e a palma junta-se a eles.
+
+Se a medição não for fiável (fundo com cor de pele, pouca luz, mão de lado), mantêm-se as últimas larguras medidas ou proporções anatómicas. Com `d`, a webcam mostra o contorno real (amarelo) e a malha (ciano), e o HUD indica quantas falanges foram medidas. `--no-hand-mesh` desliga a medição.
 
 ## Notas
 

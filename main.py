@@ -25,6 +25,7 @@ import cv2
 import numpy as np
 
 from avatar_app.debug_draw import draw_landmarks
+from avatar_app.hand_mesh import N_MEASURABLE
 from avatar_app.renderer import AvatarRenderer
 from avatar_app.tracker import BodyState, Tracker
 
@@ -41,6 +42,8 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--backend", choices=["auto", "holistic", "tasks"], default="auto",
                     help="holistic = modelos incluídos no mediapipe 0.10.21 (sem downloads); "
                          "tasks = FaceLandmarker/PoseLandmarker/HandLandmarker (precisa de models/*.task)")
+    ap.add_argument("--no-hand-mesh", action="store_true",
+                    help="não medir o contorno dos dedos (usa larguras por defeito)")
     ap.add_argument("--no-mirror", action="store_true", help="não espelhar a imagem")
     ap.add_argument("--palette", type=int, default=0)
     return ap.parse_args()
@@ -65,6 +68,10 @@ def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool) -> None
         "  ".join([status("rosto", s.face is not None), status("corpo", s.pose is not None),
                    status("maos", len(s.hands))]).replace("maos:OK", f"maos:{len(s.hands)}"),
     ]
+    if s.hand_meshes:
+        # Quantas falanges (de 14 por mão) tiveram a largura medida na imagem neste frame.
+        parts = [f"{m.measured}/{N_MEASURABLE}" for m in s.hand_meshes.values()]
+        lines.append("malha dedos medida: " + "  ".join(parts))
     if s.head_angles:
         yaw, pitch, roll = s.head_angles
         lines.append(f"cabeca  yaw {yaw:+5.0f}  pitch {pitch:+5.0f}  roll {roll:+5.0f}")
@@ -88,7 +95,7 @@ def main() -> None:
     if not cap.isOpened():
         sys.exit(f"Não foi possível abrir a webcam {args.camera}.")
 
-    tracker = Tracker(pose_model=args.pose_model, backend=args.backend)
+    tracker = Tracker(pose_model=args.pose_model, backend=args.backend, hand_mesh=not args.no_hand_mesh)
     renderer = AvatarRenderer(args.palette)
     show_landmarks, show_webcam = True, True
     fps, last = 0.0, time.perf_counter()

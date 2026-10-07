@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from .hand_mesh import HandMesh
 from .head import NECK_TOP, Ear, estimate_head
 from .tracker import (L_EAR, L_ELBOW, L_HIP, L_SHOULDER, L_WRIST, NOSE, R_EAR, R_ELBOW, R_HIP,
                       R_SHOULDER, R_WRIST, BodyState)
@@ -179,8 +180,8 @@ class AvatarRenderer:
             self._draw_arm(img, s, side, sw, ow)
         # Mãos detetadas sem pose (ex.: só as mãos em frente à câmara).
         if s.pose is None:
-            for hand in s.hands.values():
-                self._draw_hand(img, hand, ow)
+            for side, hand in s.hands.items():
+                self._draw_hand(img, hand, ow, s.hand_meshes.get(side))
         return img
 
     # ------------------------------------------------------------- utilidades
@@ -303,11 +304,14 @@ class AvatarRenderer:
             Group().circle(el, 0.13 * sw).draw(img, p.shirt, p.outline, ow)
             cv2.line(img, _ip(sh), _ip(el), p.shirt, max(1, int(0.28 * sw)), AA)
             if hand is not None:
-                self._draw_hand(img, hand, ow)
+                self._draw_hand(img, hand, ow, s.hand_meshes.get(side))
             elif s.visible(side, 0.5):
                 self._draw_mitten(img, s, side, sw, ow)
 
-    def _draw_hand(self, img, hand: np.ndarray, ow: int):
+    def _draw_hand(self, img, hand: np.ndarray, ow: int, mesh: HandMesh | None = None):
+        if mesh is not None:
+            self._draw_hand_mesh(img, hand, mesh, ow)
+            return
         p = self.palette
         hs = float(np.linalg.norm(hand[0, :2] - hand[9, :2])) or 1.0
         palm = cv2.convexHull(_poly(hand[PALM]))[:, 0, :]
@@ -325,6 +329,41 @@ class AvatarRenderer:
             cv2.circle(img, _ip(c), max(1, int(0.07 * hs)), p.skin_light, -1, AA)
         for k in (5, 9, 13, 17):
             cv2.circle(img, _ip(hand[k]), max(1, int(0.03 * hs)), tuple(int(c * 0.8) for c in p.skin), -1, AA)
+
+    def _draw_hand_mesh(self, img, hand: np.ndarray, mesh: HandMesh, ow: int):
+        """Mão com o contorno real dos dedos (larguras medidas na imagem)."""
+        p = self.palette
+        shade = tuple(int(c * 0.8) for c in p.skin)
+        # Contorno exterior da mão inteira, depois a palma por cima.
+        Group().poly(mesh.palm).draw(img, p.skin, p.outline, ow)
+        g = Group()
+        for poly in mesh.fingers:
+            g.poly(poly)
+        g.draw(img, p.skin, p.outline, ow)
+        cv2.fillPoly(img, [_poly(mesh.palm)], p.skin, AA)
+        # Dedos do mais distante para o mais próximo (z), cada um com as suas bordas,
+        # para se distinguirem quando se sobrepõem. A base fica aberta para fundir com a palma.
+        order = sorted(range(5), key=lambda i: -hand[FINGERS[i], 2].mean())
+        for i in order:
+            poly = _poly(mesh.fingers[i])
+            cv2.fillPoly(img, [poly], p.skin, AA)
+            # Aberto = sem a base. O polegar nasce dentro da palma: as bordas só a partir do MCP.
+            edge = poly[1:-1] if i == 0 else poly
+            cv2.polylines(img, [edge], False, p.outline, max(1, ow - 1), AA)
+            left, right = mesh.rails[i]
+            w = mesh.widths[i]
+            joints = hand[FINGERS[i], :2]
+            # Pregas nas articulações (PIP e DIP).
+            for j in (1, 2):
+                a, b = left[j], right[j]
+                c = (a + b) / 2
+                cv2.line(img, _ip(c + (a - c) * 0.45), _ip(c + (b - c) * 0.45), shade, max(1, ow // 2), AA)
+            # Unha: elipse alinhada com a falange distal.
+            d = joints[3] - joints[2]
+            ang = float(np.degrees(np.arctan2(d[1], d[0])))
+            c = joints[2] + d * 0.72
+            axes = (max(1, int(np.linalg.norm(d) * 0.3)), max(1, int(w[2] * 0.3)))
+            cv2.ellipse(img, _ip(c), axes, ang, 0, 360, p.skin_light, -1, AA)
 
     def _draw_mitten(self, img, s: BodyState, side: int, sw: float, ow: int):
         p = self.palette

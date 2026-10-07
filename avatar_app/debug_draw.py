@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 from mediapipe.tasks.python import vision
 
+from .hand_mesh import HandMesh
 from .head import estimate_head
 from .renderer import FACE_OVAL
 from .tracker import BodyState
@@ -23,6 +24,8 @@ _FACE_COLOR = (200, 230, 120)
 _POSE_COLOR = (80, 200, 255)
 _HAND_COLOR = (255, 120, 200)
 _HEAD_COLOR = (0, 200, 255)
+_HAND_MESH_COLOR = (255, 230, 80)
+_HAND_CONTOUR_COLOR = (0, 255, 255)
 
 
 def _lines(img, pts, conns, color, thickness=1, mask=None):
@@ -31,6 +34,21 @@ def _lines(img, pts, conns, color, thickness=1, mask=None):
         if mask is not None and not (mask[a] and mask[b]):
             continue
         cv2.line(img, tuple(p[a]), tuple(p[b]), color, thickness, cv2.LINE_AA)
+
+
+def _draw_hand_mesh(img: np.ndarray, mesh: HandMesh) -> None:
+    """Contorno real segmentado (amarelo) + malha dos dedos (triângulos, ciano)."""
+    if mesh.contour is not None and len(mesh.contour) >= 3:
+        cv2.polylines(img, [mesh.contour.astype(np.int32)], True, _HAND_CONTOUR_COLOR, 1, cv2.LINE_AA)
+    for left, right in mesh.rails:
+        l, r = left.astype(np.int32), right.astype(np.int32)
+        for i in range(len(l)):
+            cv2.line(img, tuple(l[i]), tuple(r[i]), _HAND_MESH_COLOR, 1, cv2.LINE_AA)
+            if i + 1 < len(l):
+                cv2.line(img, tuple(l[i]), tuple(r[i + 1]), _HAND_MESH_COLOR, 1, cv2.LINE_AA)
+    for poly in mesh.fingers:
+        cv2.polylines(img, [poly.astype(np.int32)], True, _HAND_MESH_COLOR, 1, cv2.LINE_AA)
+    cv2.polylines(img, [mesh.palm.astype(np.int32)], True, _HAND_MESH_COLOR, 1, cv2.LINE_AA)
 
 
 def draw_landmarks(img: np.ndarray, s: BodyState) -> None:
@@ -52,6 +70,8 @@ def draw_landmarks(img: np.ndarray, s: BodyState) -> None:
         _lines(img, s.face, _FACE, _FACE_COLOR, 1)
         _lines(img, s.face, _NOSE, _FACE_COLOR, 1)
         _lines(img, s.face, _IRIS, (255, 255, 255), 1)
+    for mesh in s.hand_meshes.values():
+        _draw_hand_mesh(img, mesh)
     for hand in s.hands.values():
         _lines(img, hand, _HAND, _HAND_COLOR, 2)
         for p in hand[:, :2].astype(int):
