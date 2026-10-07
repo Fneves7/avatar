@@ -60,6 +60,7 @@ Opções:
 | `Shift+K` | apaga a calibração |
 | `e` | liga ou desliga as expressões exageradas (só com calibração) |
 | `+` / `-` | aumenta ou diminui a intensidade do exagero |
+| `l` | liga ou desliga o olhar vivo (piscar automático e micro-movimentos dos olhos) |
 | `s` | liga ou desliga a suavização |
 | `v` | liga ou desliga a câmara virtual |
 | `b` | muda o fundo do avatar (gradiente, verde, azul ou magenta) |
@@ -102,6 +103,7 @@ avatar_app/
   hand_mesh.py           largura real dos dedos medida na imagem + malha/contorno da mão
   streaming.py           câmara virtual (pyvirtualcam) e fundos para chroma key
   pipeline.py            thread de deteção + interpolação para desenhar a ritmo fixo
+  eyes.py                olhar vivo: piscar automático e micro-movimentos da íris
   renderer.py            desenha o avatar (cabeça, pescoço, tronco, braços, mãos e dedos)
   debug_draw.py          desenha os landmarks sobre a webcam
 ```

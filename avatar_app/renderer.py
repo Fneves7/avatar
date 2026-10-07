@@ -1,11 +1,13 @@
 """Desenha um avatar 2D em estilo cartoon a partir do BodyState."""
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 import cv2
 import numpy as np
 
+from .eyes import EyeLife
 from .hand_mesh import HandMesh
 from .head import NECK_TOP, Ear, estimate_head
 from .tracker import (L_EAR, L_ELBOW, L_HIP, L_SHOULDER, L_WRIST, NOSE, R_EAR, R_ELBOW, R_HIP,
@@ -24,6 +26,7 @@ BROW_B = [300, 293, 334, 296, 336, 285, 295, 282, 283, 276]
 LIPS_OUTER = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185]
 LIPS_INNER = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191]
 BLINK_CLOSE, BLINK_OPEN = 0.6, 0.35  # piscar calibrado: fecha acima de, reabre abaixo de
+AUTO_BLINK_CLOSED = 0.85             # piscar automático: acima disto desenha-se o olho fechado
 
 # Ganhos do exagero das expressões (multiplicados pela intensidade, tecla +/-).
 EYE_WIDE_GAIN = 0.7       # abertura extra dos olhos ao arregalar
@@ -148,6 +151,10 @@ class AvatarRenderer:
         self._nose_side = 1.0
         self._geo = None  # HeadGeometry do frame atual
         self._eyes_closed = [False, False]  # EYE_A, EYE_B (com histerese)
+        self.lively_eyes = True     # piscar automático + micro-movimentos (tecla l)
+        self.eye_life = EyeLife()
+        self._auto_blink = 0.0      # fecho do piscar automático neste frame (0..1)
+        self._saccade = (0.0, 0.0)  # desvio da íris neste frame (x raio da íris)
         self.exaggerate = True      # expressões exageradas (tecla e); só com calibração
         self.exaggeration = 1.0     # intensidade (teclas + e -)
         self._calibrated = False
@@ -178,7 +185,8 @@ class AvatarRenderer:
         return self._bg_cache[key].copy()
 
     # ----------------------------------------------------------------- render
-    def render(self, s: BodyState) -> np.ndarray:
+    def render(self, s: BodyState, t: float | None = None) -> np.ndarray:
+        """t: instante (s) para as animações dos olhos; por defeito o relógio atual."""
         img = self._background(s.width, s.height)
         p = self.palette
         ow = max(2, s.width // 320)  # espessura do contorno
@@ -186,6 +194,11 @@ class AvatarRenderer:
         sw = self._shoulder_width(s)
         self._geo = estimate_head(s.face, FACE_OVAL) if (s.face is not None and self.head_3d) else None
         self._update_eyes_closed(s)
+        if self.lively_eyes:
+            now = time.monotonic() if t is None else t
+            self._auto_blink, self._saccade = self.eye_life.update(now, any(self._eyes_closed))
+        else:
+            self._auto_blink, self._saccade = 0.0, (0.0, 0.0)
         self._calibrated = s.calibrated
         arms_behind, arms_front = self._split_arms_by_depth(s, sw)
 
@@ -566,7 +579,15 @@ class AvatarRenderer:
         for i, ((contour, (ci, ri)), width) in enumerate(zip(((EYE_A, IRIS_A), (EYE_B, IRIS_B)), widths)):
             eye = f[contour]
             ec = eye.mean(axis=0)
-            if self._eyes_closed[i]:
+            # Eixos do olho: u = canto a canto, n = perpendicular (abertura).
+            u = eye[8] - eye[0]
+            u = u / (np.linalg.norm(u) or 1.0)
+            n = np.array([-u[1], u[0]])
+            if self._auto_blink > 0:
+                # Piscar automático: a abertura do olho encolhe até fechar.
+                rel = eye - ec
+                eye = ec + np.outer(rel @ u, u) + np.outer((rel @ n) * (1.0 - self._auto_blink), n)
+            if self._eyes_closed[i] or self._auto_blink > AUTO_BLINK_CLOSED:
                 # Olho fechado: só a curva da pálpebra inferior (canto a canto, por baixo).
                 lower = _poly(_scale_about(eye[:9], ec, 1.3))
                 cv2.polylines(img, [lower], False, p.outline, ow + 1, AA)
@@ -579,8 +600,9 @@ class AvatarRenderer:
             k = 1.3  # olhos maiores, estilo cartoon
             eye_big = _scale_about(eye, ec, k)
             poly = _poly(eye_big)
-            iris_c = ec + (f[ci] - ec) * k
             iris_r = float(np.linalg.norm(f[ci] - f[ri])) * k * 1.1
+            # Íris: olhar real detetado + micro-movimento (olhar vivo).
+            iris_c = ec + (f[ci] - ec) * k + (u * self._saccade[0] + n * self._saccade[1]) * iris_r
 
             cv2.fillPoly(img, [poly], p.eye_white, AA)
             # Íris recortada pelo contorno do olho (pestanejar fecha-a naturalmente).
@@ -709,6 +731,13 @@ class AvatarRenderer:
         Group().circle(c, fw * 0.62).draw(img, p.skin, p.outline, ow)
         cv2.ellipse(img, _ip(c - np.array([0, fw * 0.1])), (int(fw * 0.66), int(fw * 0.6)), 0, 180, 360,
                     p.hair, -1, AA)
+        # Olhos: pontos que piscam e mexem com o olhar vivo.
+        look = np.array(self._saccade) * fw * 0.05
         for i in (2, 5):
-            cv2.circle(img, _ip(s.pose[i, :2]), max(2, int(fw * 0.06)), p.outline, -1, AA)
+            e = s.pose[i, :2] + look
+            if self._auto_blink > 0.5:
+                d = np.array([fw * 0.07, 0.0])
+                cv2.line(img, _ip(e - d), _ip(e + d), p.outline, max(2, ow), AA)
+            else:
+                cv2.circle(img, _ip(e), max(2, int(fw * 0.06)), p.outline, -1, AA)
         cv2.line(img, _ip(s.pose[9, :2]), _ip(s.pose[10, :2]), p.outline, ow, AA)

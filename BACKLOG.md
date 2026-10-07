@@ -14,7 +14,7 @@ Objetivo do projeto: avatar em tempo real para **streaming**.
 ## Animação
 
 - [ ] **Movimento secundário:** o cabelo, as mangas e a bainha seguem com atraso, como uma mola.
-- [ ] **Olhar vivo:** micro-movimentos dos olhos e piscar automático quando o rosto não é detetado.
+- [x] **Olhar vivo** (tecla `l`): o avatar pisca sozinho (de 2,5 a 6 s, ~170 ms) quando não há um piscar real recente, porque a deteção a ~10–15 FPS perde muitos piscares. A íris faz micro-movimentos subtis (≤20% do raio), somados ao olhar real. Também funciona na cabeça simples, quando o rosto não é detetado.
 - [ ] **Idle:** respiração (o tronco e a cabeça sobem e descem ligeiramente) quando não há movimento.
 - [ ] **Transições suaves:** quando uma parte deixa de ser detetada, desaparece ou recolhe aos poucos em vez de cortar.
 
