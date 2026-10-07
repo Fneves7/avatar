@@ -20,8 +20,14 @@ SKULL_CENTER = (0.0, -0.18, 0.42)       # (x*fw, y*fh, z*fw)
 SKULL_RADII = (0.56, 0.62, 0.64)        # (x*fw, y*fh, z*fw)
 SKULL_BOTTOM = 0.12                     # y*fh máximo da nuca
 NECK_TOP = (0.05, 0.35)                 # topo do pescoço (y*fh, z*fw), escondido dentro do crânio
-EAR_POS = (0.53, 0.02, 0.30)            # lateral, vertical, profundidade
-EAR_RADII = (0.15, 0.11)                # altura (*fh), largura (*fw)
+# Orelhas ancoradas na própria malha da pessoa (regra anatómica): o topo fica ao nível das
+# sobrancelhas e o fundo ao nível da base do nariz; lateralmente, junto ao ponto do contorno
+# da cara mais perto da orelha (234/454), um pouco para trás e para fora.
+EAR_TOP_IDX = (105, 334)                # sobrancelhas (topo da orelha)
+EAR_BOTTOM_IDX = 2                      # base do nariz (fundo da orelha)
+EAR_BEHIND = 0.08                       # atrás do ponto 234/454 (*fw)
+EAR_OUT = 0.03                          # para fora do ponto 234/454 (*fw)
+EAR_HALF_WIDTH = 0.11                   # meia-largura da orelha (*fw)
 EAR_FLARE = 1.3                         # quanto a orelha abre para fora (vs. para trás)
 
 
@@ -91,19 +97,31 @@ def estimate_head(face: np.ndarray, oval_idx: list[int]) -> HeadGeometry | None:
     skull_local[below, 1] = SKULL_BOTTOM + (skull_local[below, 1] - SKULL_BOTTOM) * 0.25
     skull = cv2.convexHull(np.round(project(skull_local)).astype(np.int32))[:, 0, :]
 
+    def to_local(p: np.ndarray) -> np.ndarray:
+        """Ponto da malha (px) em coordenadas locais da cabeça (px)."""
+        return rot.T @ (p - origin)
+
+    def project_px(local_px: np.ndarray) -> np.ndarray:
+        return (origin + local_px @ rot.T)[:, :2]
+
+    # Altura das orelhas a partir da cara desta pessoa: sobrancelhas -> base do nariz.
+    top = float(np.mean([to_local(face[i])[1] for i in EAR_TOP_IDX]))
+    bottom = float(to_local(face[EAR_BOTTOM_IDX])[1])
+    half_h = max((bottom - top) / 2, 0.05 * fh)
     ears = []
-    for sgn in (-1.0, 1.0):
+    for idx in (FACE_LEFT, FACE_RIGHT):
+        anchor = to_local(face[idx])
+        sgn = 1.0 if anchor[0] >= 0 else -1.0
         out = np.array([sgn, 0.0, 0.0])
+        c = np.array([anchor[0] + sgn * EAR_OUT * fw, (top + bottom) / 2, anchor[2] + EAR_BEHIND * fw])
         # Plano da orelha: vertical + diagonal para trás/fora (as orelhas abrem para os lados).
-        u = np.array([0.0, EAR_RADII[0], 0.0])
-        v = _normalize(np.array([sgn * EAR_FLARE, 0.0, 1.0]))
-        c = np.array([sgn * EAR_POS[0], EAR_POS[1], EAR_POS[2]])
-        pts = c + np.outer(np.cos(_EAR_T), u) + np.outer(np.sin(_EAR_T), v * EAR_RADII[1])
-        inner = c + 0.55 * (np.outer(np.cos(_EAR_T), u) + np.outer(np.sin(_EAR_T), v * EAR_RADII[1]))
+        u = np.array([0.0, half_h, 0.0])
+        v = _normalize(np.array([sgn * EAR_FLARE, 0.0, 1.0])) * EAR_HALF_WIDTH * fw
+        ring = np.outer(np.cos(_EAR_T), u) + np.outer(np.sin(_EAR_T), v)
         out_world = rot @ out
         ears.append(Ear(
-            polygon=np.round(project(pts)).astype(np.int32),
+            polygon=np.round(project_px(c + ring)).astype(np.int32),
             hidden=bool(out_world[2] > 0.55),
-            inner=np.round(project(inner)).astype(np.int32),
+            inner=np.round(project_px(c + 0.55 * ring)).astype(np.int32),
         ))
     return HeadGeometry(skull=skull, ears=ears, rotation=rot, origin=origin, fw=fw, fh=fh)
