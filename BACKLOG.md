@@ -37,7 +37,7 @@ Objetivo do projeto: avatar em tempo real para **streaming**.
 - [x] **Câmara virtual:** o avatar como webcam ("OBS Virtual Camera") para OBS, Teams, Zoom e Discord. Usa `pyvirtualcam`, liga e desliga com a tecla `v` ou com `--virtual-cam`, e `--output` define a resolução.
 - [x] **Fundo para chroma key:** verde, azul ou magenta (`--background`, ou a tecla `b` ao vivo).
 - [x] **Janela só com o avatar** (`--stream-window`): sem HUD nem webcam, para "Captura de janela" no OBS.
-- [ ] **Fundo transparente:** a câmara virtual não suporta transparência. Seria preciso outra via, por exemplo uma fonte de browser no OBS.
+- [x] **Fundo transparente** (`--browser-source`): página local para a Fonte de Browser do OBS. A transparência é exata (desenho sobre preto e sobre branco), funciona com os três estilos e é enviada em PNG recortado à zona do avatar. Custa ~3× o desenho normal, só enquanto o OBS está ligado. Testado num browser Chromium: animado, com fundo transparente.
 - [x] **Fluidez:** a deteção corre numa thread separada e o avatar é desenhado a ritmo fixo (`--fps`, 30 por defeito), deslizando para a última deteção. No teste, o avatar passou de 11 para 26 FPS, em passos ~2× mais pequenos. `--sync` volta ao modo antigo. (Reduzir a imagem de deteção ou desligar a íris não acelera o Holistic, que custa ~55 ms por frame.)
 
 ## Avatares

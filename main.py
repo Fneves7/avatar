@@ -43,6 +43,7 @@ from avatar_app.hand_mesh import N_MEASURABLE
 from avatar_app.pipeline import DetectionWorker, StateBlender
 from avatar_app.renderer import AvatarRenderer
 from avatar_app.styles import STYLES
+from avatar_app.browser_source import BrowserSource
 from avatar_app.streaming import BACKGROUND_NAMES, VirtualCamera, background_color
 from avatar_app.tracker import BodyState, Tracker
 
@@ -82,6 +83,11 @@ def parse_args() -> argparse.Namespace:
                     help="ritmo a que o avatar é desenhado/enviado (a deteção corre ao seu ritmo)")
     ap.add_argument("--sync", action="store_true",
                     help="modo antigo: um desenho por deteção, sem interpolação")
+    ap.add_argument("--browser-source", action="store_true",
+                    help="servir o avatar com fundo transparente para a Fonte de Browser do OBS")
+    ap.add_argument("--browser-port", type=int, default=8765, help="porta da fonte de browser (default 8765)")
+    ap.add_argument("--browser-fps", type=int, default=None,
+                    help="ritmo da fonte de browser (por defeito = --fps); o fundo transparente custa ~3x o desenho")
     return ap.parse_args()
 
 
@@ -192,6 +198,9 @@ def main() -> None:
                 int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or args.height)
     out_size = parse_size(args.output, cam_size)
     vcam = VirtualCamera(*out_size, fps=args.fps)
+    browser = BrowserSource(args.browser_port) if args.browser_source else None
+    browser_period = 1.0 / max(args.browser_fps or args.fps, 1) - 0.002
+    last_browser = -1e9
     if args.virtual_cam:
         vcam.start()
 
@@ -226,7 +235,14 @@ def main() -> None:
                 cv2.waitKey(1)
                 continue
             state = detected if args.sync else blender.update(detected)
-            avatar = renderer.render(state)
+            now_t = time.perf_counter()
+            if browser is not None and browser.active and now_t - last_browser >= browser_period:
+                # O OBS está a pedir frames: gera também a versão com fundo transparente.
+                avatar, bgra = renderer.render_with_alpha(state)
+                browser.publish(bgra)
+                last_browser = now_t
+            else:
+                avatar = renderer.render(state)
 
             # Saída limpa para o stream (sem HUD nem webcam), antes de desenhar o HUD.
             stream = avatar
@@ -254,6 +270,9 @@ def main() -> None:
             else:
                 cam_text = "camara virtual OFF"
             stream_status = f"stream {out_size[0]}x{out_size[1]}: {cam_text} [v]   fundo {background_name} [b]"
+            if browser is not None:
+                stream_status += ("   fonte browser: " + (browser.error or
+                                  f"{browser.url} ({'OBS ligado' if browser.active else 'a espera do OBS'})"))
             draw_hud(view, state, fps, tracker.smoothing, calibrator.status(),
                      renderer.exaggeration if renderer.exaggerate else None, stream_status, worker.fps,
                      renderer.lively_eyes, renderer.transitions,
@@ -319,6 +338,8 @@ def main() -> None:
     finally:
         worker.stop()
         vcam.stop()
+        if browser is not None:
+            browser.close()
         cap.release()
         tracker.close()
         cv2.destroyAllWindows()

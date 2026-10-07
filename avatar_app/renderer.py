@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 
+import cv2
 import numpy as np
 
 from .animation import Animator
@@ -80,11 +81,43 @@ class AvatarRenderer:
         return self._bg_cache[key].copy()
 
     # ----------------------------------------------------------------- render
+    def _animate(self, s: BodyState, t: float | None):
+        """Avança a animação UMA vez por frame (molas, piscar, transições) e monta o rig."""
+        frame = self.animator.update(s, time.monotonic() if t is None else t)
+        return frame, build_rig(frame)
+
     def render(self, s: BodyState, t: float | None = None) -> np.ndarray:
         """t: instante (s) para as animações (olhos, transições, ...); por defeito o relógio atual."""
         img = self._background(s.width, s.height)
-        now = time.monotonic() if t is None else t
-        frame = self.animator.update(s, now)
-        rig = build_rig(frame)
+        frame, rig = self._animate(s, t)
         self.style.draw(img, frame, rig, self.palette)
         return img
+
+    def render_with_alpha(self, s: BodyState, t: float | None = None) -> tuple[np.ndarray, np.ndarray]:
+        """Como render(), mas devolve também o avatar com transparência (BGRA).
+
+        Desenha o mesmo frame sobre preto e sobre branco: a diferença dá a opacidade exata de
+        cada píxel (incluindo as bordas suavizadas), para qualquer estilo. A imagem normal
+        (sobre o fundo escolhido) obtém-se por composição, sem terceiro desenho."""
+        frame, rig = self._animate(s, t)
+        black = np.zeros((s.height, s.width, 3), np.uint8)
+        white = np.full((s.height, s.width, 3), 255, np.uint8)
+        self.style.draw(black, frame, rig, self.palette)
+        self.style.draw(white, frame, rig, self.palette)
+        img = self._background(s.width, s.height)
+        bgra = np.zeros((s.height, s.width, 4), np.uint8)
+        # Só a zona onde há avatar (no resto: transparente / fundo). Os estilos nunca usam preto
+        # puro (os contornos são cinzento-escuros), por isso basta olhar para o desenho sobre preto.
+        drawn = cv2.cvtColor(black, cv2.COLOR_BGR2GRAY)
+        rows, cols = np.flatnonzero(drawn.any(axis=1)), np.flatnonzero(drawn.any(axis=0))
+        if len(rows) == 0:
+            return img, bgra
+        roi = (slice(rows[0], rows[-1] + 1), slice(cols[0], cols[-1] + 1))
+        b, w, bg = black[roi], white[roi], img[roi]
+        # alpha = 1 - (branco - preto); cor = preto / alpha (o desenho sobre preto é "pré-multiplicado").
+        alpha = cv2.bitwise_not(cv2.cvtColor(cv2.subtract(w, b), cv2.COLOR_BGR2GRAY))
+        a3 = cv2.merge([alpha, alpha, alpha])
+        bgra[roi][..., :3] = cv2.divide(b, a3, scale=255)
+        bgra[roi][..., 3] = alpha
+        img[roi] = cv2.add(b, cv2.multiply(bg, cv2.bitwise_not(a3), scale=1 / 255))
+        return img, bgra
