@@ -28,6 +28,7 @@ class AvatarRenderer:
         self.style_index = next((i for i, st in enumerate(self.styles) if st.name == style), 0)
         self._bg_cache: dict = {}
         self.background: tuple[int, int, int] | None = None  # cor sólida (chroma key) ou None = gradiente
+        self.last_rig = None
 
     # ------------------------------------------------------------- estilo e paleta
     @property
@@ -85,7 +86,8 @@ class AvatarRenderer:
     def _animate(self, s: BodyState, t: float | None):
         """Avança a animação UMA vez por frame (molas, piscar, transições) e monta o rig."""
         frame = self.animator.update(s, time.monotonic() if t is None else t)
-        return frame, build_rig(frame)
+        self.last_rig = build_rig(frame)  # para o avatar 3D (Fonte de Browser /3d)
+        return frame, self.last_rig
 
     def render(self, s: BodyState, t: float | None = None) -> np.ndarray:
         """t: instante (s) para as animações (olhos, transições, ...); por defeito o relógio atual."""

@@ -101,3 +101,38 @@ def test_png_missing_folder_reports_error():
     frame = r.animator.update(make_state(), 0.0)
     st.draw(img, frame, build_rig(frame), r.palette)  # escreve o aviso, não rebenta
     assert img.any()
+
+
+def test_person_avatar_loads():
+    from avatar_app.styles.png import PersonStyle
+    st = PersonStyle()
+    assert st.error is None and st.cfg["hand"]["thumb"] == "left"
+    assert {"head", "hair_front", "hair_back", "eye_white_l", "iris_r", "mouth_open", "hand_open", "torso"} <= set(st.images)
+
+
+def test_reflection_is_an_involution():
+    from avatar_app.styles.png import _reflect_about
+    r = _reflect_about((100, 200), (0, -90))
+    assert np.allclose(r @ r, np.eye(3))
+    assert np.allclose(r @ [100, 50, 1], [100, 50, 1]), "pontos do eixo ficam"
+    assert np.allclose(r @ [130, 200, 1], [70, 200, 1])
+
+
+def test_person_hand_is_mirrored_by_thumb_side():
+    def render(hand):
+        r = AvatarRenderer(style="pessoa")
+        r.lively_eyes = False
+        s = make_state(face=None, pose=False, hand=None)
+        s.hands = {15: hand}
+        for i in range(8):
+            img = r.render(s, t=i / 30)
+        return img
+
+    hand = make_hand(wrist=(640, 500), spacing=30, base=40)
+    flipped = hand.copy()
+    flipped[:, 0] = 2 * 640 - flipped[:, 0]  # mesma mão espelhada: o polegar passa para o outro lado
+    a, b = render(hand), render(flipped)
+    # A imagem da mão espelhada é o espelho da outra (à volta do eixo do pulso), não a mesma imagem.
+    roi = (slice(300, 520), slice(540, 741))
+    assert np.abs(a[roi].astype(int) - b[roi].astype(int)).mean() > 2
+    assert np.abs(a[roi].astype(int) - b[roi][:, ::-1].astype(int)).mean() < 2

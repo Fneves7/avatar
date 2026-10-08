@@ -26,7 +26,8 @@ from ..drawing import Palette
 from ..landmarks import FINGERS
 from ..rig import Rig, RigHead
 
-DEFAULT_AVATAR = Path(__file__).resolve().parents[2] / "avatars" / "gato"
+AVATARS = Path(__file__).resolve().parents[2] / "avatars"
+DEFAULT_AVATAR = AVATARS / "gato"
 EYE_OPEN, EYE_HALF = 0.6, 0.2       # abertura do rig a partir da qual o olho está aberto / meio
 MOUTH_OPEN, MOUTH_SMALL, SMILE = 0.45, 0.15, 0.35
 FIST_RATIO = 1.3                    # dedos (ponta->pulso / nó->pulso) abaixo disto = pata fechada
@@ -43,6 +44,16 @@ def _translate(dx: float, dy: float) -> np.ndarray:
 
 def _rotate_about(c, deg: float) -> np.ndarray:
     return _m3(cv2.getRotationMatrix2D((float(c[0]), float(c[1])), deg, 1.0))
+
+
+def _reflect_about(p, d) -> np.ndarray:
+    """Reflexão (3x3) na reta que passa por p com direção d."""
+    u = _unit(np.asarray(d, float))
+    r = 2 * np.outer(u, u) - np.eye(2)
+    out = np.eye(3)
+    out[:2, :2] = r
+    out[:2, 2] = np.asarray(p, float) - r @ np.asarray(p, float)
+    return out
 
 
 def _perp(d: np.ndarray) -> np.ndarray:
@@ -155,7 +166,11 @@ class PngStyle:
             p = pts[:, :2]
             span = np.linalg.norm(p[9] - p[0]) or 1.0
             reach = np.mean([np.linalg.norm(p[c[-1]] - p[0]) for c in FINGERS[1:]]) / span
-            self._draw_hand(img, p[0], p[9], fist=reach < FIST_RATIO, alpha=alpha)
+            # Lado do polegar: (pulso->nó) x (pulso->polegar) < 0 = polegar à esquerda do eixo da mão
+            # (com os dedos para cima na imagem). Quando não bate com o desenho, a mão é espelhada.
+            d, t = p[9] - p[0], p[4] - p[0]
+            thumb_left = d[0] * t[1] - d[1] * t[0] < 0
+            self._draw_hand(img, p[0], p[9], fist=reach < FIST_RATIO, alpha=alpha, thumb_left=thumb_left)
 
     def _limb_matrix(self, cfg, a, b, thickness):
         """Afim que leva start->a, end->b e a largura do sprite à espessura pedida."""
@@ -194,7 +209,7 @@ class PngStyle:
         dst = np.float32([dst_sh[0], dst_sh[1], rig.hips.mean(axis=0)])
         blit(img, sprite, cv2.getAffineTransform(src, dst))
 
-    def _draw_hand(self, img, wrist, knuckle, fist: bool, alpha: float = 1.0):
+    def _draw_hand(self, img, wrist, knuckle, fist: bool, alpha: float = 1.0, thumb_left: bool | None = None):
         cfg = self.cfg["hand"]
         sprite = self._img(cfg["fist" if fist else "open"])
         if sprite is None:
@@ -205,6 +220,8 @@ class PngStyle:
         ang = math.degrees(math.atan2(d_dst[1], d_dst[0]) - math.atan2(d_src[1], d_src[0]))
         m = cv2.getRotationMatrix2D((float(w_src[0]), float(w_src[1])), -ang, k)
         m[:, 2] += np.asarray(wrist, float) - w_src
+        if "thumb" in cfg and thumb_left is not None and thumb_left != (cfg["thumb"] == "left"):
+            m = (_m3(m) @ _reflect_about(w_src, d_src))[:2]  # espelha à volta do eixo pulso->nó
         blit(img, sprite, m, alpha)
 
     # ------------------------------------------------------------------ cabeça
@@ -278,3 +295,11 @@ class PngStyle:
         sprite = self._img(name)
         if sprite is not None:
             blit(img, sprite, m, alpha)
+
+
+class PersonStyle(PngStyle):
+    """O mesmo estilo png com o avatar "pessoa" (tools/make_human_avatar.py)."""
+    name = "pessoa"
+
+    def __init__(self, folder: Path | str = AVATARS / "pessoa"):
+        super().__init__(folder)

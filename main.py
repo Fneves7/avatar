@@ -3,7 +3,7 @@
 Teclas:
   q / ESC  sair
   c        mudar paleta de cores do avatar
-  y        mudar o estilo do avatar (cartoon / robô / png)
+  y        mudar o estilo do avatar (cartoon / robô / png / pessoa)
   d        mostrar/esconder landmarks sobre a webcam
   w        mostrar/esconder a imagem da webcam
   h        alternar cabeça 3D (crânio, nuca, orelhas) / cabeça simples
@@ -13,10 +13,12 @@ Teclas:
   l        ligar/desligar o olhar vivo (piscar automático + micro-movimentos dos olhos)
   t        ligar/desligar as transições suaves (mãos, cara e corpo entram/saem aos poucos)
   i        ligar/desligar o idle (respiração subtil quando estás parado)
-  m        ligar/desligar o movimento secundário (cabelo e mangas seguem com atraso)
+  m        ligar/desligar o movimento secundário (cabelo, mangas e bainha seguem com atraso)
   + / -    aumentar/diminuir a intensidade do exagero
   s        ligar/desligar suavização
   S        perfil de suavização: leve (rápido) / normal / forte (estável)
+  r        ligar/desligar a suavização rígida da cara (menos tremor ao rodar a cabeça)
+  n        ligar/desligar as larguras dos braços/tronco medidas na silhueta (com --body-widths)
   a        ligar/desligar os limites anatómicos da pose (corrige cotovelos inventados, saltos, ...)
   v        ligar/desligar a câmara virtual (avatar como webcam no OBS/Teams/Zoom/Discord)
   b        mudar o fundo do avatar (gradiente / verde / azul / magenta para chroma key)
@@ -41,6 +43,8 @@ from avatar_app.calibration import Calibrator
 from avatar_app.debug_draw import draw_landmarks
 from avatar_app.hand_mesh import N_MEASURABLE
 from avatar_app.pipeline import DetectionWorker, StateBlender
+from avatar_app import settings
+from avatar_app.rig import rig_to_dict
 from avatar_app.renderer import AvatarRenderer
 from avatar_app.styles import STYLES
 from avatar_app.browser_source import BrowserSource
@@ -50,6 +54,8 @@ from avatar_app.tracker import BodyState, Tracker
 WINDOW = "Avatar MediaPipe"
 STREAM_WINDOW = "Avatar (stream)"
 CALIBRATION_FILE = Path(__file__).resolve().parent / "calibration.json"
+# Preferências afinadas com as teclas (perfil de suavização, exagero, ...), repostas no arranque.
+SETTINGS_FILE = Path(__file__).resolve().parent / "settings.json"
 
 
 def parse_args() -> argparse.Namespace:
@@ -62,6 +68,8 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--backend", choices=["auto", "holistic", "tasks"], default="auto",
                     help="holistic = modelos incluídos no mediapipe 0.10.21 (sem downloads); "
                          "tasks = FaceLandmarker/PoseLandmarker/HandLandmarker (precisa de models/*.task)")
+    ap.add_argument("--body-widths", action="store_true",
+                    help="afina as larguras dos braços e do tronco pela silhueta (±15%%; custa algum tempo de deteção)")
     ap.add_argument("--no-hand-mesh", action="store_true",
                     help="não medir o contorno dos dedos (usa larguras por defeito)")
     ap.add_argument("--no-mirror", action="store_true", help="não espelhar a imagem")
@@ -123,42 +131,46 @@ def draw_hud(img: np.ndarray, s: BodyState, fps: float, smoothing: bool,
     def status(label, ok):
         return f"{label}:{'OK' if ok else '--'}"
 
-    fps_text = f"FPS avatar {fps:4.1f}" + (f"  detecao {detect_fps:4.1f}" if detect_fps is not None else "")
-    lines = [
-        f"{fps_text}   suavizacao {smoothing_preset if smoothing else 'OFF'} [s/S]   "
-        f"{'calibrado' if s.calibrated else 'sem calibracao [k]'}",
-        "  ".join([status("rosto", s.face is not None), status("corpo", s.pose is not None),
-                   status("maos", len(s.hands))]).replace("maos:OK", f"maos:{len(s.hands)}"),
-    ]
+    lines = []
+    fps_text = f"Avatar FPS: {fps:4.1f}"
+    lines.append(f"{fps_text}")
+    lines.append(f"Detection {detect_fps:4.1f}" if detect_fps is not None else "")
+    lines.append(f"{status("Face: ", s.face is not None)}")
+    lines.append(f"{status("Body: ", s.pose is not None)}")
+    lines.append(f"{status("Hands: ", len(s.hands))}")
     if s.hand_meshes:
         # Quantas falanges (de 14 por mão) tiveram a largura medida na imagem neste frame.
         parts = [f"{m.measured}/{N_MEASURABLE}" for m in s.hand_meshes.values()]
-        lines.append("malha dedos medida: " + "  ".join(parts))
+        lines.append("Finger Mesh Count: " + "  ".join(parts))
+    lines.append(f"[s/S] Smoothing: {smoothing_preset if smoothing else 'OFF'}")
+    lines.append(f"{'Calibrated ' if s.calibrated else '[k] Calibrate'}")
     if s.head_angles:
         yaw, pitch, roll = s.head_angles
-        lines.append(f"cabeca  yaw {yaw:+5.0f}  pitch {pitch:+5.0f}  roll {roll:+5.0f}")
+        lines.append(f"Head yaw: ({yaw:+5.0f})  Pitch: ({pitch:+5.0f})  Roll: ({roll:+5.0f})")
     bs = s.blendshapes
     if bs:
         blink = (bs.get("eyeBlinkLeft", 0) + bs.get("eyeBlinkRight", 0)) / 2
         smile = (bs.get("mouthSmileLeft", 0) + bs.get("mouthSmileRight", 0)) / 2
         brow = bs.get("browInnerUp", 0) - (bs.get("browDownLeft", 0) + bs.get("browDownRight", 0)) / 2
-        lines.append(f"boca {bs.get('jawOpen', 0):.2f}  sorriso {smile:.2f}  piscar {blink:.2f}"
-                     f"  sobrancelhas {brow:+.2f}")
+        lines.append(f"Mouth: {bs.get('jawOpen', 0):.2f}  Smile: {smile:.2f}  Blink: {blink:.2f}"
+                     f"  Brow: {brow:+.2f}")
     if s.calibrated:
-        lines.append(f"exagero {'x%.2f' % exaggeration if exaggeration else 'OFF'}  [e] ligar/desligar  [+/-] intensidade")
-    idle_text = "OFF" if idle is None else (f"a respirar {idle:.0%}" if idle > 0 else "ON")
-    lines.append(f"olhar vivo {'ON' if lively else 'OFF'} [l]   transicoes {'ON' if transitions else 'OFF'} [t]"
-                 f"   idle {idle_text} [i]   mov. secundario {'ON' if secondary else 'OFF'} [m]")
+        lines.append(f"[e] Exaggeration {'x%.2f' % exaggeration if exaggeration else 'OFF'}  [+/-] Intensity")
+    idle_text = "OFF" if idle is None else (f"breathing: {idle:.0%}" if idle > 0 else "ON")
+    lines.append(f"[l] lively sight: ({'ON' if lively else 'OFF'})")
+    lines.append(f"[t] Transitions: ({'ON' if transitions else 'OFF'})")
+    lines.append(f"[i] Idle: ({idle_text})")
+    lines.append(f"[m] Secondary Movement: ({'ON' if secondary else 'OFF'})")
     if constraints is not None:
-        text = f"anatomia {'ON' if constraints else 'OFF'} [a]"
+        text = f"[a] Anatomy ({'ON' if constraints else 'OFF'})"
         if constraints and fixes:
             text += ": " + "; ".join(dict.fromkeys(fixes))
         lines.append(text)
     if stream_status:
         lines.append(stream_status)
     if style_name:
-        lines.append(f"avatar: {style_name} [y]")
-    lines.append("[c] cores [d] landmarks [w] webcam [h] cabeca 3D [k] calibrar [s] suavizar [p] print [q] sair")
+        lines.append(f"[y] Selected Avatar: {style_name}")
+    lines.append("[c] Colors [d] Landmarks [w] Webcam [h] 3D Head [k] Calibrate [s] Smoothing [p] Print [q] Exit")
 
     y = 24
     for text in lines:
@@ -181,7 +193,8 @@ def main() -> None:
     if not cap.isOpened():
         sys.exit(f"Não foi possível abrir a webcam {args.camera}.")
 
-    tracker = Tracker(pose_model=args.pose_model, backend=args.backend, hand_mesh=not args.no_hand_mesh)
+    tracker = Tracker(pose_model=args.pose_model, backend=args.backend, hand_mesh=not args.no_hand_mesh,
+                      body_widths=args.body_widths)
     renderer = AvatarRenderer(args.palette, style=args.style)
     if args.png_avatar:
         for st in renderer.styles:
@@ -190,6 +203,8 @@ def main() -> None:
     renderer.background = background_color(args.background)
     background_name = args.background
     calibrator = Calibrator(CALIBRATION_FILE)
+    if settings.load(SETTINGS_FILE, tracker, renderer):
+        print(f"[preferencias] repostas de {SETTINGS_FILE.name} (apaga o ficheiro para voltar ao normal)")
     show_landmarks, show_webcam = True, True
     fps, last = 0.0, time.perf_counter()
 
@@ -220,7 +235,7 @@ def main() -> None:
             t_frame = time.perf_counter()
             latest = worker.latest()
             if worker.failed and (latest is None or latest[0] == last_seq):
-                print("Frame da webcam falhou; a terminar.")
+                print("Webcam Frame failed; shutting down.")
                 break
             if latest is None:  # ainda a arrancar
                 if cv2.waitKey(10) & 0xFF in (ord("q"), 27):
@@ -243,6 +258,9 @@ def main() -> None:
                 last_browser = now_t
             else:
                 avatar = renderer.render(state)
+            if browser is not None and browser.active_3d:
+                # A página /3d (avatar 3D) está aberta: envia-lhe o rig deste frame (JSON pequeno).
+                browser.publish_rig(rig_to_dict(renderer.last_rig))
 
             # Saída limpa para o stream (sem HUD nem webcam), antes de desenhar o HUD.
             stream = avatar
@@ -264,20 +282,24 @@ def main() -> None:
             else:
                 view = avatar.copy()
             if vcam.active:
-                cam_text = f"camara virtual ON ({vcam.device})"
+                cam_text = f"Virtual Camera (ON) ({vcam.device})"
             elif vcam.error:
-                cam_text = f"camara virtual com erro: {vcam.error[:60]}"
+                cam_text = f"Virtual Camera with errors: {vcam.error[:60]}"
             else:
-                cam_text = "camara virtual OFF"
-            stream_status = f"stream {out_size[0]}x{out_size[1]}: {cam_text} [v]   fundo {background_name} [b]"
+                cam_text = "Virtual Camera (OFF)"
+            stream_status = f"[v] Stream: {out_size[0]}x{out_size[1]}: {cam_text}   [b] Background: ({background_name})"
             if browser is not None:
-                stream_status += ("   fonte browser: " + (browser.error or
-                                  f"{browser.url} ({'OBS ligado' if browser.active else 'a espera do OBS'})"))
+                stream_status += ("   browser source: " + (browser.error or
+                                  f"{browser.url} ({'OBS (ON)' if browser.active else 'waiting OBS'})"
+                                  f"  3D: {browser.url}/3d ({'ON' if browser.active_3d else 'waiting'})"))
             draw_hud(view, state, fps, tracker.smoothing, calibrator.status(),
                      renderer.exaggeration if renderer.exaggerate else None, stream_status, worker.fps,
                      renderer.lively_eyes, renderer.transitions,
                      renderer.idle.weight if renderer.idle_enabled else None, renderer.secondary_enabled,
-                     tracker.smoothing_preset, tracker.constraints, detected.pose_fixes,
+                     f"{tracker.smoothing_preset}  [r] Rigid face: {'ON' if tracker.rigid_face else 'OFF'}"
+                     + (f"  [n] Body widths: {'ON' if renderer.cartoon.body_widths else 'OFF'}"
+                        if tracker.body_widths is not None else ""),
+                     tracker.constraints, detected.pose_fixes,
                      renderer.style.name)
             cv2.imshow(WINDOW, view)
 
@@ -318,6 +340,10 @@ def main() -> None:
                 tracker.smoothing = not tracker.smoothing
             elif key == ord("S"):
                 tracker.next_smoothing_preset()
+            elif key == ord("n"):
+                renderer.cartoon.body_widths = not renderer.cartoon.body_widths
+            elif key == ord("r"):
+                tracker.rigid_face = not tracker.rigid_face
             elif key == ord("a"):
                 tracker.constraints = not tracker.constraints
             elif key == ord("v"):
@@ -334,8 +360,9 @@ def main() -> None:
                 out.mkdir(exist_ok=True)
                 path = out / f"avatar_{time.strftime('%Y%m%d_%H%M%S')}.png"
                 cv2.imwrite(str(path), view)
-                print(f"Guardado {path}")
+                print(f"Saved {path}")
     finally:
+        settings.save(SETTINGS_FILE, tracker, renderer)
         worker.stop()
         vcam.stop()
         if browser is not None:

@@ -7,18 +7,30 @@ corre um servidor HTTP local (só em 127.0.0.1) com:
            (?after=N espera até haver um frame mais recente do que N, até 1 s).
 O PNG é codificado na thread do servidor, por isso não atrasa o desenho do avatar.
 No OBS: Fontes -> + -> Browser -> URL http://127.0.0.1:8765 (largura/altura do stream).
+
+Avatar 3D (three.js, desenhado pelo browser a partir do rig, também com fundo transparente):
+  /3d      página do avatar 3D (avatar_app/web/; o three.js vem no projeto, sem CDN);
+  /rig     o último rig em JSON (?after=N espera por um mais recente, como /frame).
+No OBS: URL http://127.0.0.1:8765/3d.
 """
 from __future__ import annotations
 
+import json
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import cv2
 import numpy as np
 
 ACTIVE_FOR_S = 2.0  # a página conta como ligada até 2 s depois do último pedido
+WEB_DIR = Path(__file__).parent / "web"
+# Ficheiros servidos da pasta web/ (lista fechada: o servidor não serve mais nada do disco).
+WEB_FILES = {"/3d": ("avatar3d.html", "text/html; charset=utf-8"),
+             "/avatar3d.js": ("avatar3d.js", "text/javascript; charset=utf-8"),
+             "/three.module.min.js": ("three.module.min.js", "text/javascript; charset=utf-8")}
 
 PAGE = """<!doctype html>
 <html><head><meta charset="utf-8"><title>Avatar</title>
@@ -68,6 +80,8 @@ class BrowserSource:
         self._seq = 0
         self._encoded: tuple[int, bytes] | None = None
         self._last_request = -1e9
+        self._rig: tuple[int, bytes] | None = None   # (seq, JSON)
+        self._last_rig_request = -1e9
         self.error: str | None = None
         self._server = None
         try:
@@ -82,6 +96,24 @@ class BrowserSource:
     def active(self) -> bool:
         """True se a página (OBS) pediu frames recentemente: só então vale a pena gerá-los."""
         return self._server is not None and time.monotonic() - self._last_request < ACTIVE_FOR_S
+
+    @property
+    def active_3d(self) -> bool:
+        """True se a página do avatar 3D pediu o rig recentemente."""
+        return self._server is not None and time.monotonic() - self._last_rig_request < ACTIVE_FOR_S
+
+    def publish_rig(self, data: dict) -> None:
+        """Novo rig (rig_to_dict) para a página /3d."""
+        body = json.dumps(data, separators=(",", ":")).encode("utf-8")
+        with self._cond:
+            seq = (self._rig[0] if self._rig else 0) + 1
+            self._rig = (seq, body)
+            self._cond.notify_all()
+
+    def _wait_rig(self, after: int, timeout: float = 1.0):
+        with self._cond:
+            self._cond.wait_for(lambda: self._rig is not None and self._rig[0] > after, timeout)
+            return self._rig if self._rig is not None and self._rig[0] > after else None
 
     def publish(self, bgra: np.ndarray) -> None:
         """Novo frame (BGRA). Guarda só a zona onde o avatar não é transparente."""
@@ -120,15 +152,34 @@ class BrowserSource:
             def log_message(self, *args):  # sem spam na consola
                 pass
 
+            def _send(self, body: bytes, ctype: str, headers: dict | None = None):
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                for k, v in (headers or {}).items():
+                    self.send_header(k, v)
+                self.end_headers()
+                self.wfile.write(body)
+
             def do_GET(self):
                 url = urlparse(self.path)
                 if url.path == "/":
-                    body = PAGE.encode("utf-8")
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/html; charset=utf-8")
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
+                    self._send(PAGE.encode("utf-8"), "text/html; charset=utf-8")
+                    return
+                if url.path in WEB_FILES:
+                    name, ctype = WEB_FILES[url.path]
+                    self._send((WEB_DIR / name).read_bytes(), ctype)
+                    return
+                if url.path == "/rig":
+                    source._last_rig_request = time.monotonic()
+                    after = int(parse_qs(url.query).get("after", ["-1"])[0])
+                    rig = source._wait_rig(after)
+                    if rig is None:
+                        self.send_response(204)
+                        self.end_headers()
+                        return
+                    self._send(rig[1], "application/json", {"X-Seq": str(rig[0])})
                     return
                 if url.path != "/frame":
                     self.send_error(404)

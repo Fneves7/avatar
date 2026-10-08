@@ -48,13 +48,14 @@ Opções:
 - `--pose-model lite|full|heavy`: troca velocidade por precisão no corpo
 - `--no-mirror`: não espelha a imagem
 - `--palette N`: define a paleta inicial
+- `--body-widths`: afina as larguras dos braços e do tronco do cartoon pela silhueta da pessoa (±15%, tecla `n`); custa ~11 ms por deteção
 
 ### Teclas
 
 | Tecla | Ação |
 |---|---|
 | `c` | muda a paleta (Clássico, Neon, Floresta, Robô) |
-| `y` | muda o estilo do avatar (cartoon, robô ou png); também `--style png` no arranque |
+| `y` | muda o estilo do avatar (cartoon, robô, png/gato ou pessoa); também `--style pessoa` no arranque |
 | `d` | mostra ou esconde os landmarks sobre a webcam |
 | `w` | mostra só o avatar ou o avatar ao lado da webcam |
 | `k` | calibra a pose neutra: olha em frente com a cara neutra durante ~2 s; fica guardada em `calibration.json` |
@@ -64,14 +65,18 @@ Opções:
 | `l` | liga ou desliga o olhar vivo (piscar automático e micro-movimentos dos olhos) |
 | `t` | liga ou desliga as transições suaves (as mãos, a cara e o corpo entram e saem aos poucos) |
 | `i` | liga ou desliga o idle (respiração subtil quando estás parado) |
-| `m` | liga ou desliga o movimento secundário (o cabelo e as mangas seguem com atraso) |
+| `m` | liga ou desliga o movimento secundário (o cabelo, as mangas e a bainha seguem com atraso) |
 | `s` | liga ou desliga a suavização |
 | `Shift+S` | muda o perfil de suavização: leve (mais rápido), normal ou forte (mais estável) |
+| `r` | liga ou desliga a suavização rígida da cara (menos tremor e deformação ao rodar a cabeça) |
+| `n` | liga ou desliga as larguras medidas na silhueta (só com `--body-widths`) |
 | `a` | liga ou desliga os limites anatómicos da pose (corrige cotovelos inventados, saltos, etc.) |
 | `v` | liga ou desliga a câmara virtual |
 | `b` | muda o fundo do avatar (gradiente, verde, azul ou magenta) |
 | `p` | guarda uma captura em `screenshots/` |
 | `q` / `Esc` | sai |
+
+**As tuas escolhas ficam guardadas.** Ao sair, o perfil de suavização, a intensidade do exagero e as partes ligadas ou desligadas com as teclas (`s`, `r`, `a`, `l`, `t`, `i`, `m`, `h`, `e`, `n`) ficam em `settings.json`, e voltam no arranque seguinte. Afina com a webcam e fica assim. As opções da linha de comandos (estilo, paleta, fundo, ...) não são guardadas. Para voltar ao normal, apaga o `settings.json`.
 
 ## Streaming
 
@@ -107,6 +112,12 @@ No OBS, junta uma fonte **Browser** com o URL `http://127.0.0.1:8765` e o tamanh
 - **Custo:** cerca de 3× o desenho normal, e só enquanto o OBS está a mostrar a página. `--browser-fps 15` baixa o ritmo desta saída, se for preciso.
 - **Porta:** `--browser-port` muda a porta.
 
+**Avatar 3D (Fonte de Browser do OBS).** Com `--browser-source`, o mesmo servidor tem também um avatar 3D em `http://127.0.0.1:8765/3d`, igualmente com fundo transparente. É desenhado pelo próprio OBS (three.js, em WebGL) a partir do rig que o programa envia a cada frame (um JSON de ~1 KB), por isso quase não custa nada ao programa.
+
+- **Aspeto:** cel shading com contorno. A cabeça roda em 3D; os olhos piscam e seguem o olhar; as sobrancelhas, a boca e o rubor seguem as expressões; o tronco, os braços, as mãos e os dedos seguem o esqueleto.
+- **Sem internet:** o three.js (licença MIT) vem dentro do projeto, em `avatar_app/web/`, porque a rede bloqueia os CDNs.
+- **Para mudar o avatar:** as cores e as formas estão no topo de [avatar3d.js](avatar_app/web/avatar3d.js).
+
 **Fluidez:** a deteção (MediaPipe, ~55–70 ms por frame) corre numa thread própria, e o avatar é desenhado e enviado a ritmo fixo (`--fps 30`, por defeito). Entre deteções, os pontos deslizam para a última posição detetada, o que custa ~50 ms de atraso em troca de movimento fluido. `--sync` volta ao modo antigo, com um desenho por deteção. O HUD mostra os dois ritmos (`FPS avatar` e `detecao`).
 
 ## Testes
@@ -121,7 +132,7 @@ Os testes não precisam de webcam: usam caras, poses e mãos sintéticas (a cara
 .venv\Scripts\python.exe -m pytest
 ```
 
-Este comando corre os testes rápidos (~15 s): animação, calibração, limites anatómicos, malha das mãos, rig e estilos, e transparência com a Fonte de Browser. Há mais dois grupos, que só correm quando os pedes:
+Este comando corre os testes rápidos (~100, ~45 s): animação, calibração, limites anatómicos, malha das mãos, filtros, larguras pela silhueta, rig e estilos, preferências, transparência e avatar 3D com a Fonte de Browser. Há mais dois grupos, que só correm quando os pedes:
 
 - `-m mediapipe`: o ciclo completo do `main.py` com uma câmara simulada e o MediaPipe a sério.
 - `-m parity`: o estilo cartoon tem de ficar pixel a pixel igual ao último commit. Serve para refatorizações que não devem mudar o aspeto. `AVATAR_PARITY_REF=<commit>` compara com outro commit.
@@ -134,16 +145,20 @@ avatar_app/
   models.py              download e cache dos modelos
   tracker.py             motores holistic/tasks, associação mão↔pulso, suavização e retenção
   smoothing.py           filtro One Euro (reduz o tremor sem acrescentar atraso)
+  face_filter.py         suavização rígida da cara: movimento de conjunto + forma local
   head.py                crânio, nuca e orelhas estimados em 3D a partir da malha da cara
   hand_mesh.py           largura real dos dedos medida na imagem + malha/contorno da mão
   streaming.py           câmara virtual (pyvirtualcam) e fundos para chroma key
-  browser_source.py      fundo transparente: página local para a Fonte de Browser do OBS
+  browser_source.py      fundo transparente: página local para a Fonte de Browser do OBS (2D e /3d)
+  web/avatar3d.*         avatar 3D (three.js) desenhado a partir do rig; three.js incluído (MIT)
   pipeline.py            thread de deteção + interpolação para desenhar a ritmo fixo
   eyes.py                olhar vivo: piscar automático e micro-movimentos da íris
   transitions.py         transições suaves (fade-in/fade-out) das mãos, da cara e do corpo
   idle.py                idle: respiração subtil quando a pessoa está parada
-  secondary.py           movimento secundário: molas do cabelo e das mangas
+  secondary.py           movimento secundário: molas do cabelo, das mangas e da bainha
+  settings.py            preferências guardadas entre sessões (settings.json)
   constraints.py         limites anatómicos da pose (cotovelos, saltos, braços, ancas)
+  body_widths.py         larguras dos braços/tronco medidas na silhueta, com limites apertados
   animation.py           camada de animação partilhada (olhar vivo, idle, molas, transições) -> AnimFrame
   rig.py                 parâmetros do avatar independentes do desenho (cabeça, olhos, boca, esqueleto)
   renderer.py            fachada: fundo + animação + rig + estilo escolhido
@@ -151,8 +166,10 @@ avatar_app/
   styles/robot.py        estilo "robô" (exemplo de estilo feito só a partir do rig)
   styles/png.py          estilo "png": avatar de imagens PNG por camadas (estilo VTuber 2D)
 tools/make_sample_avatar.py  gera o avatar PNG de exemplo (avatars/gato)
+tools/make_human_avatar.py   gera o avatar PNG "pessoa" (avatars/pessoa), estilo anime/VTuber
 tests/                   testes pytest sem webcam (ver "Testes")
 avatars/gato/            imagens PNG + avatar.json do avatar de exemplo
+avatars/pessoa/          imagens PNG + avatar.json da personagem humana (estilo `pessoa`)
   landmarks.py           índices dos landmarks do MediaPipe usados pelo rig e pelos estilos
   drawing.py             paletas e utilitários de desenho partilhados
   debug_draw.py          desenha os landmarks sobre a webcam
@@ -168,6 +185,8 @@ O desenho está separado em três camadas:
    - **Olhos:** abertura de cada olho e direção do olhar.
    - **Expressão:** sobrancelhas, abertura da boca e sorriso.
    - **Corpo:** respiração, esqueleto do tronco, braços e mãos, e as molas do cabelo e das mangas.
+
+   O rig também sai em JSON (`rig_to_dict`) para o avatar 3D da página `/3d`.
 3. **Estilo** ([styles/](avatar_app/styles)): como o avatar é desenhado. A tecla `y` alterna entre estilos.
 
 **Para criar um avatar novo:** faz uma classe com `name` e `draw(img, frame, rig, palette)` e junta-a a `STYLES` em [styles/\_\_init\_\_.py](avatar_app/styles/__init__.py). O estilo [robô](avatar_app/styles/robot.py) serve de exemplo, porque usa só o rig. O cartoon também lê a malha da cara diretamente, porque desenha a partir dos 478 pontos.
@@ -178,6 +197,12 @@ O estilo `png` desenha um avatar feito de imagens PNG com transparência. Vêm d
 
 ```bash
 .venv\Scripts\python.exe main.py --style png
+```
+
+Há também uma personagem humana mais trabalhada, `avatars/pessoa` (estilo `pessoa` na tecla `y`), em estilo anime/VTuber: sombreado cel, cabelo com madeixas e reflexo, olhos com pestanas e brilhos, rubor, camisola com gola e mãos com dedos. É gerada por `tools/make_human_avatar.py`; as cores e as formas estão no topo desse ficheiro.
+
+```bash
+.venv\Scripts\python.exe main.py --style pessoa
 ```
 
 **As imagens** (os nomes dos ficheiros são fixos):
@@ -193,7 +218,7 @@ O estilo `png` desenha um avatar feito de imagens PNG com transparência. Vêm d
 - **cabeça:** o centro da cara e a largura da cara na tela; o centro de cada olho e de cada sobrancelha; a paralaxe de cada camada.
 - **tronco:** os ombros e o centro das ancas.
 - **membros:** os pontos de início e fim, a largura do desenho e a espessura relativa aos ombros.
-- **mãos:** o pulso e a base do dedo do meio.
+- **mãos:** o pulso e a base do dedo do meio. Opcional: `"thumb": "left"` (ou `"right"`), o lado do polegar no desenho; a mão é então espelhada quando o polegar detetado está do outro lado, para servir às duas mãos.
 
 **Para usar o teu próprio avatar:** desenha as imagens com os mesmos nomes, ajusta os pontos no `avatar.json` e corre com `--png-avatar avatars/<pasta>`.
 

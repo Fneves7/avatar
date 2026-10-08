@@ -41,6 +41,7 @@ class CartoonStyle:
         self._nose_side = 1.0
         self._geo = None  # HeadGeometry do frame atual
         self._hands_drawn: set[int] = set()
+        self.body_widths = True  # usa as larguras medidas na silhueta, se houver (tecla n)
 
     def draw(self, img: np.ndarray, frame: AnimFrame, rig: Rig, palette: Palette) -> None:
         # Valores da animação deste frame (o desenho em si é independente de como são obtidos).
@@ -50,6 +51,7 @@ class CartoonStyle:
         self._saccade = frame.saccade
         self._hair_offset, self._hair_rot = frame.hair_offset, frame.hair_rot
         self._sleeve_offset = frame.sleeve_offset
+        self._hem_offset = frame.hem_offset
         self._hand_fades = frame.hand_fades
         self._face_fade = frame.face_fade
         s = frame.state
@@ -140,6 +142,16 @@ class CartoonStyle:
         p = self.palette
         ls, rs, axis, up, neck_base = self._shoulder_frame(s, sw)
         lh, rh = self._hips(s, sw)
+        # Largura do tronco afinada pela silhueta (--body-widths): alarga/estreita à volta do eixo.
+        tk = (s.body_widths if self.body_widths else {}).get("torso", 1.0)
+        if tk != 1.0:
+            mid = (ls + rs) / 2
+            ls, rs = mid + (ls - mid) * tk, mid + (rs - mid) * tk
+            hmid = (lh + rh) / 2
+            lh, rh = hmid + (lh - hmid) * tk, hmid + (rh - hmid) * tk
+        # Bainha com atraso (movimento secundário): o fundo inteiro, a cintura só metade.
+        hem = self._hem_offset
+        lh, rh = lh + hem, rh + hem
         out_h = 0.02 * sw
         mid_l, mid_r = (ls + lh) / 2 - axis * 0.04 * sw, (rs + rh) / 2 + axis * 0.04 * sw
         # Linha dos trapézios: do topo do ombro sobe em curva até ao lado do pescoço.
@@ -207,15 +219,18 @@ class CartoonStyle:
             return
         sh, el = s.pose[shoulder_i, :2], s.pose[elbow_i, :2]
         wr = hand[0, :2] if hand is not None else s.pose[side, :2]
+        # Larguras afinadas pela silhueta (--body-widths): fatores pequenos, 1.0 sem medição.
+        bw = s.body_widths if self.body_widths else {}
+        up_w, fore_w = 0.28 * sw * bw.get(f"upper_{side}", 1.0), 0.2 * sw * bw.get(f"fore_{side}", 1.0)
 
         # Bainha da manga: segue o cotovelo com atraso (movimento secundário).
         cuff = el + self._sleeve_offset.get(side, 0.0)
-        Group().line(sh, el, 0.28 * sw).circle(cuff, 0.13 * sw).draw(img, p.shirt, p.outline, ow)
+        Group().line(sh, el, up_w).circle(cuff, 0.13 * sw).draw(img, p.shirt, p.outline, ow)
         if hand is not None or s.visible(side, 0.25):
-            Group().line(el, wr, 0.2 * sw).circle(el, 0.1 * sw).draw(img, p.skin, p.outline, ow)
+            Group().line(el, wr, fore_w).circle(el, 0.1 * sw).draw(img, p.skin, p.outline, ow)
             # Punho da manga por cima do cotovelo.
             Group().circle(cuff, 0.13 * sw).draw(img, p.shirt, p.outline, ow)
-            cv2.line(img, _ip(sh), _ip(el), p.shirt, max(1, int(0.28 * sw)), AA)
+            cv2.line(img, _ip(sh), _ip(el), p.shirt, max(1, int(up_w)), AA)
             # Luva da pose: sem mão, ou por baixo da mão enquanto esta ainda está a aparecer.
             if (hand is None or self._hand_fades[side].alpha < 1.0) and s.visible(side, 0.5):
                 self._draw_mitten(img, s, side, sw, ow)

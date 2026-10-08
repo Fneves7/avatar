@@ -5,7 +5,7 @@ adicionada a STYLES. O estilo "robô" é o exemplo que só usa o Rig; o estilo "
 um avatar feito de imagens por camadas (pasta avatars/<nome> com avatar.json).
 """
 from .cartoon import CartoonStyle
-from .png import PngStyle
+from .png import PersonStyle, PngStyle
 from .robot import RobotStyle
 
-STYLES = [CartoonStyle, RobotStyle, PngStyle]
+STYLES = [CartoonStyle, RobotStyle, PngStyle, PersonStyle]

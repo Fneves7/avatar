@@ -30,6 +30,7 @@ class AnimFrame:
     hair_offset: np.ndarray                # px
     hair_rot: float                        # rad
     sleeve_offset: dict[int, np.ndarray] = field(default_factory=dict)
+    hem_offset: np.ndarray = field(default_factory=lambda: np.zeros(2))  # bainha do tronco (px)
     hand_fades: dict[int, Fade] = field(default_factory=dict)
     face_fade: Fade | None = None
     pose_fade: Fade | None = None          # corpo (tronco e braços): (pose, visibilidade)
@@ -44,7 +45,7 @@ class Animator:
         self.transitions = True     # mãos/cara/corpo entram e saem aos poucos (tecla t)
         self.idle_enabled = True    # respiração quando parado (tecla i)
         self.idle = IdleAnimator()
-        self.secondary_enabled = True  # cabelo e mangas seguem com atraso (tecla m)
+        self.secondary_enabled = True  # cabelo, mangas e bainha seguem com atraso (tecla m)
         self.secondary = SecondaryMotion()
         self.hand_fades = {L_WRIST: Fade(), R_WRIST: Fade()}
         self.face_fade = Fade()
@@ -77,7 +78,7 @@ class Animator:
         sec = self.secondary
         return AnimFrame(
             state=s, t=now, eyes_closed=list(self._eyes_closed), auto_blink=auto_blink, saccade=saccade,
-            hair_offset=sec.hair_offset, hair_rot=sec.hair_rot, sleeve_offset=dict(sec.sleeve_offset),
+            hair_offset=sec.hair_offset, hair_rot=sec.hair_rot, sleeve_offset=dict(sec.sleeve_offset), hem_offset=sec.hem_offset,
             hand_fades=self.hand_fades, face_fade=self.face_fade, pose_fade=self.pose_fade, idle_weight=self.idle.weight,
             breath=self.idle.weight * breath(now / BREATH_PERIOD))
 

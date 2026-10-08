@@ -181,3 +181,43 @@ def build_rig(frame: AnimFrame) -> Rig:
         if hf.visible:
             rig.hands[side] = (hf.data[0], hf.alpha)
     return rig
+
+
+def rig_to_dict(rig: Rig) -> dict:
+    """O rig em JSON para o avatar 3D (página /3d da Fonte de Browser).
+
+    Coordenadas normalizadas pela altura da imagem, com a origem no centro e y para cima
+    (como num referencial 3D): x em [-aspeto, aspeto], y em [-1, 1]. Tamanhos na mesma escala.
+    "olho esquerdo/direito" é o da imagem (esquerda/direita de quem vê)."""
+    w, h = rig.width, rig.height
+
+    def pt(p) -> list[float]:
+        return [round((float(p[0]) - w / 2) / h * 2, 4), round((h / 2 - float(p[1])) / h * 2, 4)]
+
+    def size(v: float) -> float:
+        return round(float(v) / h * 2, 4)
+
+    out: dict = {"aspect": round(w / h, 4), "breath": round(rig.breath, 3),
+                 "hair": [size(rig.hair_offset[0]), -size(rig.hair_offset[1])], "hair_rot": round(-rig.hair_rot, 4)}
+    hd = rig.head
+    if hd is not None:
+        left = 0 if hd.eye_centers[0][0] <= hd.eye_centers[1][0] else 1
+        out["head"] = {
+            "center": pt(hd.center), "size": size(hd.size), "height": size(hd.height),
+            # Ângulos no referencial 3D (y para cima): roll positivo = sentido anti-horário.
+            "roll": round(-hd.roll, 4), "yaw": round(hd.yaw, 4), "pitch": round(hd.pitch, 4),
+            "turn": round(hd.turn, 4),
+            "eye_open": [round(float(hd.eye_open[left]), 3), round(float(hd.eye_open[1 - left]), 3)],
+            "look": [round(float(hd.look[0]), 3), round(-float(hd.look[1]), 3)],
+            "brow": round(hd.brow, 3), "mouth_open": round(hd.mouth_open, 3),
+            "mouth_smile": round(hd.mouth_smile, 3), "alpha": round(hd.alpha, 3),
+        }
+    if rig.shoulders is not None:
+        out["body"] = {"shoulders": [pt(p) for p in rig.shoulders], "hips": [pt(p) for p in rig.hips],
+                       "neck_base": pt(rig.neck_base), "width": size(rig.shoulder_width)}
+    out["arms"] = {str(side): {"shoulder": pt(a.shoulder), "elbow": pt(a.elbow), "wrist": pt(a.wrist),
+                               "sleeve": [size(v) * s for v, s in zip(rig.sleeve_offset.get(side, (0, 0)), (1, -1))]}
+                   for side, a in rig.arms.items()}
+    out["hands"] = {str(side): {"points": [pt(p) for p in pts[:21]], "alpha": round(alpha, 3)}
+                    for side, (pts, alpha) in rig.hands.items()}
+    return out

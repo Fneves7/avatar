@@ -15,7 +15,9 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
+from .body_widths import BodyWidths
 from .constraints import apply_constraints, reject_glitches
+from .face_filter import RigidFaceFilter
 from .hand_mesh import HandMesh, HandMeshEstimator
 from .smoothing import OneEuroFilter
 
@@ -50,6 +52,7 @@ class BodyState:
     hand_meshes: dict[int, HandMesh] = field(default_factory=dict)  # contorno dos dedos por mão
     calibrated: bool = False  # head_angles/blendshapes já relativos à pose neutra
     pose_fixes: list[str] = field(default_factory=list)  # correções anatómicas feitas neste frame
+    body_widths: dict[str, float] = field(default_factory=dict)  # fatores de largura (--body-widths)
 
     def visible(self, idx: int, thr: float = 0.5) -> bool:
         return self.pose is not None and self.pose_visibility is not None and self.pose_visibility[idx] >= thr
@@ -63,6 +66,7 @@ class _Raw:
     pose: np.ndarray | None = None
     visibility: np.ndarray | None = None
     hands: dict[int, np.ndarray] = field(default_factory=dict)
+    mask: np.ndarray | None = None  # silhueta da pessoa (0..1), só com segmentação
 
 
 class _Part:
@@ -142,7 +146,8 @@ def _geometry_expressions(f: np.ndarray) -> tuple[dict[str, float], np.ndarray]:
 class _HolisticBackend:
     name = "holistic"
 
-    def __init__(self, pose_model: str):
+    def __init__(self, pose_model: str, segmentation: bool = False):
+        self.segmentation = segmentation
         complexity = {"lite": 0, "full": 1, "heavy": 2}[pose_model]
         # 0.10.21 só inclui o modelo "full"; os outros seriam descarregados da Google.
         if complexity != 1:
@@ -151,6 +156,7 @@ class _HolisticBackend:
         self.holistic = mp.solutions.holistic.Holistic(
             static_image_mode=False, model_complexity=complexity, smooth_landmarks=True,
             refine_face_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5,
+            enable_segmentation=segmentation, smooth_segmentation=segmentation,
         )
 
     def close(self) -> None:
@@ -167,6 +173,8 @@ class _HolisticBackend:
             lms = r.pose_landmarks.landmark
             raw.pose = _to_array(lms, scale)
             raw.visibility = np.array([p.visibility for p in lms])
+        if self.segmentation and r.segmentation_mask is not None:
+            raw.mask = r.segmentation_mask
         # As mãos do holistic são recortadas a partir dos pulsos da pose, por isso
         # "left_hand" corresponde sempre ao pulso 15 e "right_hand" ao 16.
         if r.left_hand_landmarks:
@@ -252,17 +260,21 @@ class _TasksBackend:
 
 class Tracker:
     def __init__(self, pose_model: str = "full", backend: str = "auto", smoothing: bool = True,
-                 hand_mesh: bool = True):
+                 hand_mesh: bool = True, body_widths: bool = False):
         if backend == "auto":
             backend = "holistic" if HAS_HOLISTIC else "tasks"
         if backend == "holistic" and not HAS_HOLISTIC:
             raise SystemExit("O motor 'holistic' precisa de mediapipe<=0.10.21 (pip install mediapipe==0.10.21).")
-        self.backend = _HolisticBackend(pose_model) if backend == "holistic" else _TasksBackend(pose_model)
+        # A silhueta (para afinar as larguras do corpo) só existe no motor holistic e custa algum tempo.
+        self.backend = _HolisticBackend(pose_model, segmentation=body_widths) if backend == "holistic"             else _TasksBackend(pose_model)
+        self.body_widths = BodyWidths() if body_widths and backend == "holistic" else None
         print(f"[tracker] motor: {self.backend.name}")
 
         self.smoothing = smoothing
         # O rosto precisa de pouco atraso (expressões); o corpo pode ser mais suave.
         self._face = _Part(min_cutoff=2.0, beta=0.08)
+        self._face_point_filter = self._face.filter
+        self._face_rigid_filter = RigidFaceFilter(min_cutoff=2.0, beta=0.08)
         self._pose = _Part(min_cutoff=1.2, beta=0.04)
         self._hands = {L_WRIST: _Part(1.5, 0.06), R_WRIST: _Part(1.5, 0.06)}
         self._angles_filter = OneEuroFilter(1.0, 0.02)
@@ -271,10 +283,22 @@ class Tracker:
         self.hand_mesh = HandMeshEstimator() if hand_mesh else None
         self.constraints = True   # limites anatómicos da pose (tecla a)
         self._glitch_held: dict[int, int] = {}
+        self.rigid_face = True    # cara suavizada como um todo + forma local (tecla r)
+
+    @property
+    def rigid_face(self) -> bool:
+        return self._face.filter is self._face_rigid_filter
+
+    @rigid_face.setter
+    def rigid_face(self, on: bool) -> None:
+        new = self._face_rigid_filter if on else self._face_point_filter
+        if new is not self._face.filter:
+            new.reset()
+            self._face.filter = new
 
     def _filters(self) -> list[OneEuroFilter]:
-        return [self._face.filter, self._pose.filter, self._angles_filter] + \
-               [p.filter for p in self._hands.values()]
+        return [self._face_point_filter, *self._face_rigid_filter.filters(), self._pose.filter,
+                self._angles_filter] + [p.filter for p in self._hands.values()]
 
     def set_smoothing_preset(self, name: str) -> None:
         """leve = mais rápido (menos atraso, mais tremor); forte = mais estável (mais atraso)."""
@@ -323,6 +347,8 @@ class Tracker:
             # Corrige só o que é impossível (não mexe no estado dos filtros).
             state.pose, state.pose_visibility = apply_constraints(
                 state.pose, state.pose_visibility, state.hands, state.pose_fixes)
+        if self.body_widths is not None:
+            state.body_widths = self.body_widths.update(raw.mask, state.pose, state.pose_visibility)
         return state
 
     def _smooth(self, part: _Part, pts: np.ndarray | None, t: float) -> np.ndarray | None:

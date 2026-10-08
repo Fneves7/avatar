@@ -18,7 +18,8 @@ trabalho novo, ver o que lá está e mantê-lo atualizado.
 - A rede bloqueia `storage.googleapis.com` (modelos `.task` do MediaPipe). PyPI, GitHub e
   HuggingFace funcionam. O motor `tasks` só funciona se os `.task` forem postos à mão em `models/`.
 - OBS Studio 32 instalado → câmara virtual "OBS Virtual Camera" via `pyvirtualcam`.
-- `calibration.json` é pessoal (está no `.gitignore`).
+- `calibration.json` e `settings.json` (preferências das teclas, `avatar_app/settings.py`) são
+  pessoais (estão no `.gitignore`).
 - O utilizador faz os commits e os pushes. Não fazer commit sem pedido.
 
 ## Arquitetura (caminho de um frame)
@@ -32,13 +33,15 @@ main.py: webcam -> DetectionWorker (thread, pipeline.py) -> Tracker (tracker.py)
      Animator (animation.py: olhar vivo eyes.py, idle.py, molas secondary.py, transições transitions.py)
      -> Rig (rig.py: parâmetros semânticos estilo VTuber)
      -> estilo (styles/: cartoon, robo, png) desenha sobre o fundo
+     -> rig_to_dict (JSON) -> página /3d (web/avatar3d.js, three.js) desenha o avatar 3D no browser
 -> saídas: janela (HUD + webcam com debug_draw.py), câmara virtual (streaming.py),
    janela só-avatar, Fonte de Browser com fundo transparente (browser_source.py)
 ```
 
 - O estilo `cartoon` desenha a partir da malha de 478 pontos; `robo` só a partir do Rig;
-  `png` com imagens por camadas de `avatars/<nome>/` + `avatar.json` (exemplo gerado por
-  `tools/make_sample_avatar.py`). Índices dos landmarks em `landmarks.py`, paletas em `drawing.py`.
+  `png` com imagens por camadas de `avatars/<nome>/` + `avatar.json` (gato gerado por
+  `tools/make_sample_avatar.py`; `pessoa` é o mesmo estilo com `avatars/pessoa`, gerado por
+  `tools/make_human_avatar.py`). Índices dos landmarks em `landmarks.py`, paletas em `drawing.py`.
 - `render_with_alpha` desenha o mesmo frame sobre preto e branco para tirar a transparência exata;
   a animação avança **uma vez** por frame (`_animate`) — avançar duas vezes estraga as molas.
 - Quase tudo tem tecla para ligar/desligar (lista no docstring de `main.py` e no README).
@@ -59,16 +62,20 @@ main.py: webcam -> DetectionWorker (thread, pipeline.py) -> Tracker (tracker.py)
 
 1. **Malha dos braços/ombros/pescoço pela segmentação da pessoa** (redesenhar o tronco a partir
    da silhueta) — ficou mal na webcam real (perto da câmara os ombros reais estão muito acima das
-   articulações; braço à frente do tronco dá larguras falsas). Se voltar: só afinar larguras do
-   desenho atual, com limites apertados.
+   articulações; braço à frente do tronco dá larguras falsas). Feito depois dessa forma:
+   `body_widths.py` (`--body-widths`, tecla `n`, desligado por defeito) só afina larguras, ±15%.
 2. **Cabeça**: pose por ajuste Kabsch do modelo canónico (468 pontos) + forma do crânio medida na
    segmentação (elipsoide com 3 proporções → "bolota" de perfil) + contorno de 64 raios medidos.
-   O utilizador reverteu tudo. O tremor da rotação da cabeça continua por resolver.
+   O utilizador reverteu tudo. Depois disso, o tremor passou a ser atacado só no filtro
+   (`face_filter.py`, tecla `r`), sem mexer no desenho — ainda por validar na webcam real.
 3. **Modo performance** (detetar em meia resolução, desligar íris): medido, não acelera o Holistic.
 
 ## Números medidos (para não voltar a medir)
 
 - Holistic: ~55–70 ms por frame, custo praticamente fixo (≈ 15 FPS de deteção).
+- Segmentação do Holistic (`--body-widths`): +~11 ms por deteção (foto real, 1280 px).
+- Avatar 3D (/3d): o programa só envia ~1 KB de JSON por frame; o desenho é do browser (WebGL).
+- Suavização rígida da cara (sintético): −29% tremor parado, −36% deformação a mexer, +0,5 px atraso.
 - Desenho por frame (máquina sem carga): cartoon ~10 ms, robô ~7 ms, png ~19 ms
   (o png chegou a 244 ms antes de recortar os sprites e misturar em inteiros com OpenCV).
 - Fundo transparente: ~3× o desenho normal; PNG recortado à zona do avatar ~18 ms, ~17 KB.
@@ -77,7 +84,7 @@ main.py: webcam -> DetectionWorker (thread, pipeline.py) -> Tracker (tracker.py)
 ## Testes (sem webcam)
 
 - Pytest em `tests/` (instalar com `requirements-dev.txt`). Por defeito, `.venv\Scripts\python.exe -m pytest`
-  corre os rápidos (~60, ~15 s). `-m mediapipe` corre o ciclo completo do `main.py` com câmara
+  corre os rápidos (~100, ~45 s). `-m mediapipe` corre o ciclo completo do `main.py` com câmara
   simulada; `-m parity` compara o cartoon pixel a pixel com HEAD (ou `AVATAR_PARITY_REF`).
   Correr os rápidos depois de cada mudança; a paridade em refatorizações. Acrescentar testes ao
   que se fizer de novo.

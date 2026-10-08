@@ -1,0 +1,117 @@
+{
+  "name": "Pessoa",
+  "notas": "Coordenadas em píxeis de cada imagem. Gerado por tools/make_human_avatar.py; podes trocar qualquer PNG por um desenho teu com o mesmo tamanho e os mesmos pontos de encaixe.",
+  "head": {
+    "canvas": [
+      512,
+      512
+    ],
+    "center": [
+      256,
+      290
+    ],
+    "face_width": 246,
+    "eyes": {
+      "l": [
+        198,
+        294
+      ],
+      "r": [
+        314,
+        294
+      ]
+    },
+    "eye_radius": 30,
+    "brows": {
+      "l": [
+        196,
+        246
+      ],
+      "r": [
+        316,
+        246
+      ]
+    },
+    "mouth": [
+      256,
+      392
+    ],
+    "parallax": {
+      "hair_back": -0.06,
+      "head": 0.0,
+      "eyes": 0.12,
+      "brows": 0.13,
+      "mouth": 0.11,
+      "hair_front": 0.07
+    }
+  },
+  "torso": {
+    "file": "torso.png",
+    "shoulders": [
+      [
+        96,
+        120
+      ],
+      [
+        416,
+        120
+      ]
+    ],
+    "hips": [
+      256,
+      500
+    ]
+  },
+  "neck": {
+    "file": "neck.png",
+    "start": [
+      40,
+      6
+    ],
+    "end": [
+      40,
+      114
+    ],
+    "width": 52,
+    "thickness": 0.36
+  },
+  "upper_arm": {
+    "file": "upper_arm.png",
+    "start": [
+      48,
+      14
+    ],
+    "end": [
+      48,
+      206
+    ],
+    "width": 76,
+    "thickness": 0.24
+  },
+  "forearm": {
+    "file": "forearm.png",
+    "start": [
+      40,
+      10
+    ],
+    "end": [
+      40,
+      190
+    ],
+    "width": 60,
+    "thickness": 0.19
+  },
+  "hand": {
+    "open": "hand_open.png",
+    "fist": "hand_fist.png",
+    "wrist": [
+      100,
+      200
+    ],
+    "knuckle": [
+      100,
+      110
+    ],
+    "thumb": "left"
+  }
+}

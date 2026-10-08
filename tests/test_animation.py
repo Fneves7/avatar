@@ -4,7 +4,7 @@ import numpy as np
 from avatar_app.eyes import SACCADE_RADIUS, EyeLife
 from avatar_app.idle import BREATH_AMPLITUDE, IdleAnimator
 from avatar_app.renderer import AvatarRenderer
-from avatar_app.secondary import HAIR_MAX_LAG, SecondaryMotion
+from avatar_app.secondary import HAIR_MAX_LAG, HEM_MAX_LAG, SecondaryMotion
 from avatar_app.tracker import BodyState
 from avatar_app.transitions import FADE_IN_S, FADE_OUT_S, Fade
 
@@ -119,6 +119,41 @@ def test_hair_spring_resets_on_teleport():
         sec.update(_face_state(0), i / FPS)
     sec.update(_face_state(400), 10 / FPS)
     assert np.linalg.norm(sec.hair_offset) < 1e-6
+
+
+def _body_state(dx):
+    pose, vis = make_pose()
+    pose[:, 0] += dx
+    return BodyState(W, H, pose=pose, pose_visibility=vis)
+
+
+def test_hem_lags_and_settles():
+    sec = SecondaryMotion()
+    sw = float(np.linalg.norm(make_pose()[0][11, :2] - make_pose()[0][12, :2]))
+    lag = []
+    for i in range(int(2.0 * FPS)):
+        t = i / FPS
+        sec.update(_body_state(150 * min(1.0, max(0.0, (t - 0.5) / 0.3))), t)
+        lag.append(sec.hem_offset[0])
+    lag = np.array(lag)
+    assert lag[: int(0.5 * FPS)].max() == 0.0, "parado: sem desvio"
+    assert lag.min() < -0.3 * HEM_MAX_LAG * sw, "a bainha deve ficar para trás"
+    assert abs(lag).max() <= HEM_MAX_LAG * sw + 1e-6
+    assert abs(lag[-1]) < 0.5, "e assentar"
+
+
+def test_hem_moves_only_the_bottom_of_the_torso():
+    r = AvatarRenderer()
+    r.lively_eyes = False
+    r.idle_enabled = False
+    for i in range(12):
+        r.render(_body_state(0), t=i / FPS)
+    still = r.render(_body_state(0), t=12 / FPS)
+    r.animator.secondary._hem.p = r.animator.secondary._hem.p + np.array([-30.0, 0.0])
+    moved = r.render(_body_state(0), t=13 / FPS)
+    diff = np.abs(moved.astype(int) - still.astype(int)).max(axis=2) > 30
+    assert diff[600:].sum() > 50, "o fundo do tronco mexe"
+    assert diff[:420].sum() == 0, "os ombros e a cabeça não"
 
 
 # ------------------------------------------------------------------ transições
