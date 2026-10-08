@@ -81,9 +81,9 @@ class Calibrator:
         if path.exists():
             try:
                 self.calibration = Calibration.from_dict(json.loads(path.read_text(encoding="utf-8")))
-                print(f"[calibração] carregada de {path}")
+                print(f"[calibration] loaded from {path}")
             except (OSError, ValueError) as exc:
-                print(f"[calibração] ficheiro inválido ({exc}); ignorado")
+                print(f"[calibration] invalid file ({exc}); ignored")
 
     @property
     def active(self) -> bool:
@@ -99,7 +99,7 @@ class Calibrator:
         self.calibration = None
         self._t0 = None
         self.path.unlink(missing_ok=True)
-        self._message = ("calibracao apagada", time.monotonic())
+        self._message = ("calibration cleared", time.monotonic())
 
     def process(self, s: BodyState) -> None:
         """Chamado a cada frame com os valores em bruto do tracker."""
@@ -116,7 +116,7 @@ class Calibrator:
             return
         self._t0 = None
         if len(self._samples) < MIN_SAMPLES:
-            self._message = ("calibracao falhou: rosto nao detetado", time.monotonic())
+            self._message = ("calibration failed: no face detected", time.monotonic())
             return
         # Mediana: um piscar ou um movimento a meio da recolha não estraga a calibração.
         head = np.median(np.array([h for h, _ in self._samples]), axis=0)
@@ -128,20 +128,20 @@ class Calibrator:
         self.calibration = Calibration(head=tuple(float(x) for x in head), base=base)
         try:
             self.path.write_text(json.dumps(self.calibration.to_dict(), indent=2), encoding="utf-8")
-            self._message = ("calibracao guardada", time.monotonic())
+            self._message = ("calibration saved", time.monotonic())
         except OSError as exc:
-            self._message = (f"calibracao feita (nao guardada: {exc})", time.monotonic())
+            self._message = (f"calibration done (not saved: {exc})", time.monotonic())
 
     def status(self) -> str | None:
         """Texto para o HUD (durante e logo após a calibração)."""
         if self.active:
             elapsed = time.monotonic() - self._t0
             if elapsed < WARMUP_S:
-                return "CALIBRAR: olha em frente, cara neutra, olhos abertos..."
+                return "CALIBRATING: look straight ahead, neutral face, eyes open..."
             pct = min(100, int((elapsed - WARMUP_S) / DURATION_S * 100))
-            return f"CALIBRAR: nao te mexas... {pct}%"
+            return f"CALIBRATING: hold still... {pct}%"
         if self._message and time.monotonic() - self._message[1] < MESSAGE_S:
             return self._message[0]
         if self.calibration is not None and self.calibration.outdated:
-            return "calibracao antiga: carrega em [k] para ativar todas as expressoes"
+            return "old calibration: press [k] to enable all expressions"
         return None

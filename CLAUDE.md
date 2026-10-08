@@ -56,7 +56,12 @@ main.py: webcam -> DetectionWorker (thread, pipeline.py) -> Tracker (tracker.py)
   último commit (`git restore`), não à mão.
 - Refatorizações que não devem mudar o aspeto: provar com teste de paridade pixel a pixel contra
   o último commit (ver "Testes" abaixo).
-- Texto do HUD **sem acentos** (as fontes Hershey do OpenCV não os desenham).
+- **UI em inglês** (HUD, mensagens no ecrã e na consola, `--help`); código, comentários e
+  documentação em PT-PT. As opções da linha de comandos mantêm os valores internos
+  (`--background verde`, `--style pessoa`, perfis `leve/forte`); o HUD mostra-os traduzidos
+  (`DISPLAY_NAMES` no `main.py`). Texto do HUD **sem acentos** (fontes Hershey do OpenCV).
+- HUD: dados de diagnóstico em cima (FPS, deteção, ângulos, expressões, correções); dicas e
+  controlos com tecla no fundo da janela; mensagem da calibração ao centro, em cima.
 
 ## Já tentado e revertido (não repetir da mesma forma)
 

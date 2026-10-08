@@ -76,4 +76,4 @@ def save(path: Path, tracker, renderer) -> None:
     try:
         Path(path).write_text(json.dumps(collect(tracker, renderer), indent=2), encoding="utf-8")
     except OSError as exc:
-        print(f"[preferencias] nao foi possivel guardar {path}: {exc}")
+        print(f"[settings] could not save {path}: {exc}")

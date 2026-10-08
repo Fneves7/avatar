@@ -151,7 +151,7 @@ class _HolisticBackend:
         complexity = {"lite": 0, "full": 1, "heavy": 2}[pose_model]
         # 0.10.21 só inclui o modelo "full"; os outros seriam descarregados da Google.
         if complexity != 1:
-            print("[holistic] só o modelo de pose 'full' vem incluído; a usar 'full'.")
+            print("[holistic] only the 'full' pose model is bundled; using 'full'.")
             complexity = 1
         self.holistic = mp.solutions.holistic.Holistic(
             static_image_mode=False, model_complexity=complexity, smooth_landmarks=True,
@@ -264,11 +264,11 @@ class Tracker:
         if backend == "auto":
             backend = "holistic" if HAS_HOLISTIC else "tasks"
         if backend == "holistic" and not HAS_HOLISTIC:
-            raise SystemExit("O motor 'holistic' precisa de mediapipe<=0.10.21 (pip install mediapipe==0.10.21).")
+            raise SystemExit("The 'holistic' engine needs mediapipe<=0.10.21 (pip install mediapipe==0.10.21).")
         # A silhueta (para afinar as larguras do corpo) só existe no motor holistic e custa algum tempo.
         self.backend = _HolisticBackend(pose_model, segmentation=body_widths) if backend == "holistic"             else _TasksBackend(pose_model)
         self.body_widths = BodyWidths() if body_widths and backend == "holistic" else None
-        print(f"[tracker] motor: {self.backend.name}")
+        print(f"[tracker] engine: {self.backend.name}")
 
         self.smoothing = smoothing
         # O rosto precisa de pouco atraso (expressões); o corpo pode ser mais suave.

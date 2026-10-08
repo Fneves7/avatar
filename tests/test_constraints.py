@@ -31,7 +31,7 @@ def test_invented_elbow_is_moved_below_raised_hand():
     fixes = []
     out, _ = apply_constraints(pose, vis, {16: _vertical_hand(np.array([785.0, 740.0]))}, fixes)
     assert abs(out[14, 0] - 785) < 1 and out[14, 1] > 740, "cotovelo no prolongamento da mão, por baixo"
-    assert any("cotovelo" in f for f in fixes)
+    assert any("elbow" in f for f in fixes)
 
 
 def test_clearly_visible_elbow_is_kept():

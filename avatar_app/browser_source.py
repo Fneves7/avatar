@@ -87,10 +87,10 @@ class BrowserSource:
         try:
             self._server = _Server((host, port), self._handler())
             threading.Thread(target=self._server.serve_forever, name="fonte-browser", daemon=True).start()
-            print(f"[fonte browser] a servir em {self.url} (OBS: Fonte de Browser com este URL)")
+            print(f"[browser source] serving at {self.url} (OBS: Browser Source with this URL; 3D avatar at /3d)")
         except OSError as exc:
-            self.error = f"porta {port} indisponivel: {exc}"
-            print(f"[fonte browser] {self.error}")
+            self.error = f"port {port} unavailable: {exc}"
+            print(f"[browser source] {self.error}")
 
     @property
     def active(self) -> bool:

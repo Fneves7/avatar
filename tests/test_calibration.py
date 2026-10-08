@@ -63,7 +63,7 @@ def test_calibration_fails_without_face(tmp_path, clock):
         clock[0] += 1 / 30
         c.process(BodyState(W, H))
     assert c.calibration is None
-    assert "falhou" in (c.status() or "")
+    assert "failed" in (c.status() or "")
 
 
 def test_old_calibration_asks_to_recalibrate(tmp_path):

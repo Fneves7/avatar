@@ -48,13 +48,13 @@ class VirtualCamera:
             self._cam = pyvirtualcam.Camera(width=self.size[0], height=self.size[1], fps=self.fps,
                                             fmt=pyvirtualcam.PixelFormat.BGR)
             self.error = None
-            print(f"[camara virtual] ligada: {self._cam.device} ({self.size[0]}x{self.size[1]})")
+            print(f"[virtual camera] on: {self._cam.device} ({self.size[0]}x{self.size[1]})")
             return True
         except ImportError:
-            self.error = "pyvirtualcam nao instalado (pip install pyvirtualcam)"
+            self.error = "pyvirtualcam not installed (pip install pyvirtualcam)"
         except Exception as exc:  # driver em falta, câmara ocupada, ...
             self.error = f"{exc}"
-        print(f"[camara virtual] nao foi possivel ligar: {self.error}")
+        print(f"[virtual camera] could not start: {self.error}")
         return False
 
     def send(self, frame_bgr: np.ndarray) -> None:
@@ -66,7 +66,7 @@ class VirtualCamera:
             self._cam.send(np.ascontiguousarray(frame_bgr))
         except Exception as exc:
             self.error = f"{exc}"
-            print(f"[camara virtual] erro a enviar, a desligar: {exc}")
+            print(f"[virtual camera] send error, turning off: {exc}")
             self.stop()
 
     def stop(self) -> None:
@@ -75,4 +75,4 @@ class VirtualCamera:
                 self._cam.close()
             finally:
                 self._cam = None
-                print("[camara virtual] desligada")
+                print("[virtual camera] off")

@@ -18,7 +18,7 @@ from __future__ import annotations
 import numpy as np
 
 L_SHOULDER, R_SHOULDER, L_ELBOW, R_ELBOW, L_WRIST, R_WRIST, L_HIP, R_HIP = 11, 12, 13, 14, 15, 16, 23, 24
-ARMS = {L_WRIST: (L_SHOULDER, L_ELBOW, "esq"), R_WRIST: (R_SHOULDER, R_ELBOW, "dir")}
+ARMS = {L_WRIST: (L_SHOULDER, L_ELBOW, "left"), R_WRIST: (R_SHOULDER, R_ELBOW, "right")}  # nomes para o HUD
 
 GLITCH_JUMP = 0.5          # salto máximo (* largura dos ombros) de uma articulação pouco visível
 GLITCH_VISIBILITY = 0.5
@@ -52,12 +52,12 @@ def reject_glitches(raw: np.ndarray, prev: np.ndarray | None, vis: np.ndarray,
         return raw
     out = raw.copy()
     for wrist, (_, elbow, name) in ARMS.items():
-        for j, label in ((elbow, "cotovelo"), (wrist, "pulso")):
+        for j, label in ((elbow, "elbow"), (wrist, "wrist")):
             jump = np.linalg.norm(raw[j, :2] - prev[j, :2]) > GLITCH_JUMP * sw
             if jump and vis[j] < GLITCH_VISIBILITY and held.get(j, 0) < GLITCH_MAX_HOLD:
                 out[j] = prev[j]
                 held[j] = held.get(j, 0) + 1
-                fixes.append(f"{label} {name}: salto ignorado")
+                fixes.append(f"{name} {label}: jump ignored")
             else:
                 held[j] = 0
     return out
@@ -84,21 +84,21 @@ def apply_constraints(pose: np.ndarray, vis: np.ndarray, hands: dict[int, np.nda
                 if bend > WRIST_BEND_ALWAYS or (bend > WRIST_BEND_FIX and vis[elbow] < ELBOW_TRUSTED):
                     length = float(np.clip(np.linalg.norm(fore), FOREARM_LENGTH[0] * sw, FOREARM_LENGTH[1] * sw))
                     pose[elbow, :2] = pose[wrist, :2] - _unit(axis) * length
-                    fixes.append(f"cotovelo {name}: recolocado pela mao ({bend:.0f} graus)")
+                    fixes.append(f"{name} elbow: moved to follow the hand ({bend:.0f} deg)")
 
         # Braços esticados demais.
         upper = pose[elbow, :2] - pose[shoulder, :2]
         if np.linalg.norm(upper) > MAX_SEGMENT * sw:
             pose[elbow, :2] = pose[shoulder, :2] + _unit(upper) * MAX_SEGMENT * sw
-            fixes.append(f"braco {name}: encurtado")
+            fixes.append(f"{name} upper arm: shortened")
         fore = pose[wrist, :2] - pose[elbow, :2]
         if np.linalg.norm(fore) > MAX_SEGMENT * sw and hand is None:
             pose[wrist, :2] = pose[elbow, :2] + _unit(fore) * MAX_SEGMENT * sw
-            fixes.append(f"antebraco {name}: encurtado")
+            fixes.append(f"{name} forearm: shortened")
 
     # Ancas acima dos ombros (pessoa de pé/sentada): pose impossível, ignora as ancas.
     if (vis[L_HIP] > 0 or vis[R_HIP] > 0) and \
             (pose[L_HIP, 1] + pose[R_HIP, 1]) / 2 < (pose[L_SHOULDER, 1] + pose[R_SHOULDER, 1]) / 2:
         vis[[L_HIP, R_HIP]] = 0.0
-        fixes.append("ancas acima dos ombros: ignoradas")
+        fixes.append("hips above shoulders: ignored")
     return pose, vis

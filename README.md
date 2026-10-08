@@ -118,7 +118,7 @@ No OBS, junta uma fonte **Browser** com o URL `http://127.0.0.1:8765` e o tamanh
 - **Sem internet:** o three.js (licença MIT) vem dentro do projeto, em `avatar_app/web/`, porque a rede bloqueia os CDNs.
 - **Para mudar o avatar:** as cores e as formas estão no topo de [avatar3d.js](avatar_app/web/avatar3d.js).
 
-**Fluidez:** a deteção (MediaPipe, ~55–70 ms por frame) corre numa thread própria, e o avatar é desenhado e enviado a ritmo fixo (`--fps 30`, por defeito). Entre deteções, os pontos deslizam para a última posição detetada, o que custa ~50 ms de atraso em troca de movimento fluido. `--sync` volta ao modo antigo, com um desenho por deteção. O HUD mostra os dois ritmos (`FPS avatar` e `detecao`).
+**Fluidez:** a deteção (MediaPipe, ~55–70 ms por frame) corre numa thread própria, e o avatar é desenhado e enviado a ritmo fixo (`--fps 30`, por defeito). Entre deteções, os pontos deslizam para a última posição detetada, o que custa ~50 ms de atraso em troca de movimento fluido. `--sync` volta ao modo antigo, com um desenho por deteção. O HUD mostra os dois ritmos (`Avatar FPS` e `Detection FPS`).
 
 ## Testes
 
@@ -140,7 +140,7 @@ Este comando corre os testes rápidos (~100, ~45 s): animação, calibração, l
 ## Estrutura
 
 ```
-main.py                  loop da webcam, HUD e teclas
+main.py                  loop da webcam, HUD (em inglês: diagnóstico em cima, dicas das teclas em baixo) e teclas
 avatar_app/
   models.py              download e cache dos modelos
   tracker.py             motores holistic/tasks, associação mão↔pulso, suavização e retenção

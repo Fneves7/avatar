@@ -138,8 +138,8 @@ class PngStyle:
                     self.images[f.stem] = Sprite(im)  # recortada: as camadas da cabeça são quase vazias
         except (OSError, ValueError) as exc:
             self.cfg = None
-            self.error = f"avatar PNG nao encontrado em {self.folder} ({exc.__class__.__name__}): " \
-                         f"corre tools/make_sample_avatar.py"
+            self.error = f"PNG avatar not found in {self.folder} ({exc.__class__.__name__}): " \
+                         f"run tools/make_sample_avatar.py"
 
     def _img(self, name: str) -> Sprite | None:
         return self.images.get(Path(name).stem)
@@ -147,7 +147,7 @@ class PngStyle:
     # ------------------------------------------------------------------ desenho
     def draw(self, img: np.ndarray, frame: AnimFrame, rig: Rig, palette: Palette) -> None:
         if self.cfg is None:
-            cv2.putText(img, self.error or "avatar PNG em falta", (20, img.shape[0] // 2),
+            cv2.putText(img, self.error or "PNG avatar missing", (20, img.shape[0] // 2),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
             return
         if rig.shoulders is not None:

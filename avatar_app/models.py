@@ -22,17 +22,17 @@ def get_model(name: str) -> Path:
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     path = MODELS_DIR / url.rsplit("/", 1)[-1]
     if not path.exists():
-        print(f"[modelos] A descarregar {path.name} ...")
+        print(f"[models] Downloading {path.name} ...")
         tmp = path.with_suffix(".part")
         try:
             urllib.request.urlretrieve(url, tmp)
         except OSError as exc:
             tmp.unlink(missing_ok=True)
             raise SystemExit(
-                f"\nNão foi possível descarregar o modelo '{path.name}': {exc}\n"
-                f"Descarrega-o manualmente (ex.: no browser) e coloca-o em:\n  {path}\n"
+                f"\nCould not download the model '{path.name}': {exc}\n"
+                f"Download it manually (e.g. in a browser) and put it in:\n  {path}\n"
                 f"URL: {url}\n"
             ) from exc
         tmp.replace(path)
-        print(f"[modelos] OK ({path.stat().st_size / 1e6:.1f} MB)")
+        print(f"[models] OK ({path.stat().st_size / 1e6:.1f} MB)")
     return path
